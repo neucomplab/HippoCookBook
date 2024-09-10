@@ -35,7 +35,7 @@ for ii = 1 : length(sessionsTable.SessionName)
             
             end
             collision_metrics_1_21 = get_light_spike_CollisionMetrics(uLEDResponses_interval,'label','1msTo21ms','saveMat',true,'update_cell_metrics',true,'save_as','lightSpikeCollisions','rate_change_threshold',3);
-            collision_metrics_control = get_light_spike_CollisionMetrics(uLEDResponses_control,'label','control','saveMat',true,'update_cell_metrics',true,'save_as','lightSpikeCollisions','rate_change_threshold',3);
+            collision_metrics_control = get_light_spike_CollisionMetrics(uLEDResponses_control,'label','control','saveMat',true,'update_cell_metrics',true,'save_as','lightSpikeCollisions_control','rate_change_threshold',3);
 
             clear uLEDResponses_interval
             clear uLEDResponses_control
@@ -51,8 +51,13 @@ end
 for ii = 1:length(sessionsTable.SessionName)
     
     if contains(sessionsTable.Project{ii}, targetProject) && contains(sessionsTable.Behavior{ii},targetBehavior) || strcmpi('all', targetProject) 
-
+        
+        cd(adapt_filesep([database_path filesep sessionsTable.Path{ii}])); 
         session = loadSession;
+        delete(gcp('nocreate'))
+        spikes = loadSpikes;
+        spikes_times = spikes.times;
+        monosyn_inh_win = [0.001 0.021]; % 01to21
 
         for ii= 1:length(session.epochs) 
             if strcmp(session.epochs{ii}.behavioralParadigm,'Maze')
@@ -77,7 +82,7 @@ for ii = 1:length(sessionsTable.SessionName)
             collision_metrics_1_21_pre = get_light_spike_CollisionMetrics(uLEDResponses_interval_pre,'label','1msTo21ms_pre','saveMat',true,'update_cell_metrics',false,'save_as','lightSpikeCollisions_pre','rate_change_threshold',3);
             clear uLEDResponses_interval_pre
 
-            collision_metrics_1_21_post = get_light_spike_CollisionMetrics(uLEDResponses_interval_post,'label','1msTo21ms_pre','saveMat',true,'update_cell_metrics',false,'save_as','lightSpikeCollisions_post','rate_change_threshold',3);
+            collision_metrics_1_21_post = get_light_spike_CollisionMetrics(uLEDResponses_interval_post,'label','1msTo21ms_post','saveMat',true,'update_cell_metrics',false,'save_as','lightSpikeCollisions_post','rate_change_threshold',3);
             clear uLEDResponses_interval_post
             %%%
 
