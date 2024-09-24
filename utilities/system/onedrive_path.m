@@ -1,6 +1,5 @@
 function dp = onedrive_path
 % return dropbox folder path
-    os = computer;
     switch computer
        case 'MACI64'
             %computerName = char(java.net.InetAddress.getLocalHost.getHostName);
@@ -19,6 +18,8 @@ function dp = onedrive_path
             dp = 'C:\Users\agallardo\OneDrive - imim.es\';
         case 'DESKTOP-BEPJ8P0'
             dp = 'C:\Users\mpicco\OneDrive - imim.es\';
+        case 'IMW02838' % pc de Ane, la mejor
+            dp = 'C:\Users\amartinez11\OneDrive - imim.es\';
         otherwise
             error('Not recornized computer!');
     end
