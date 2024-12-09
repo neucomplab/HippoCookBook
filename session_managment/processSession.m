@@ -40,9 +40,9 @@ addParameter(p,'analog_optogenetic_channels',[],@isnumeric);
 addParameter(p,'promt_hippo_layers',true,@islogical);
 addParameter(p,'manual_analog_pulses_threshold',false,@islogical);
 addParameter(p,'bazler_ttl_channel',[],@isnumeric);
-addParameter(p,'leftArmTtl_channel',2,@isnumeric)
-addParameter(p,'rightArmTtl_channel',3,@isnumeric)
-addParameter(p,'homeDelayTtl_channel',4,@isnumeric)
+addParameter(p,'leftArmTtl_channel',[],@isnumeric)
+addParameter(p,'rightArmTtl_channel',[],@isnumeric)
+addParameter(p,'homeDelayTtl_channel',[],@isnumeric)
 addParameter(p,'tracking_pixel_cm',0.1149,@isnumeric);
 addParameter(p,'excludeAnalysis',[]); % 
 addParameter(p,'profileType','hippocampus',@ischar); % options, 'hippocampus' and 'cortex'
@@ -88,6 +88,7 @@ selectProbe_automatic = p.Results.selectProbe_automatic;
 % Deal with inputs
 prevPath = pwd;
 cd(basepath);
+keyboard;
 
 mkdir('SummaryFigures')
 if createLegacySummaryFolder
@@ -111,6 +112,7 @@ if length(excludeAnalysis) == 0
     excludeAnalysis = num2str(excludeAnalysis);
 end
 excludeAnalysis = lower(excludeAnalysis);
+
 %% 1. Runs sessionTemplate
 if ~any(ismember(excludeAnalysis, {'1',lower('sessionTemplate')}))
     try
@@ -157,9 +159,21 @@ if ~any(ismember(excludeAnalysis, {'1',lower('sessionTemplate')}))
    
     session = gui_session(session);
 
+<<<<<<< HEAD
+    selectProbe('automatic',false,'force',true); % choose probe
+    close all
+end
+=======
+
     selectProbe('force',true,'automatic', selectProbe_automatic); % choose probe
 close all
 end
+
+>>>>>>> 0b5e8e6dee9c79dca9af27ee0849b975c08947fd
+
+leftArmTtl_channel = session.analysisTags.leftArmTtl_channel;
+rightArmTtl_channel = session.analysisTags.rightArmTtl_channel;
+homeDelayTtl_channel = session.analysisTags.homeDelayTtl_channel;
 
 ints = [];
 if restrict_to_manipulation
@@ -280,7 +294,8 @@ if ~any(ismember(excludeAnalysis, {'8',lower('eventsModulation')}))
 
 
     % 8.3 Theta intervals
-    thetaEpochs = detectThetaEpochs('force',true,'useCSD',false);
+    thetaEpochs = detectThetaEpochs('force',true,'useCSD',useCSD_for_theta_detection);
+    
 end
 
 %% 9. Phase Modulation
@@ -327,7 +342,7 @@ end
 if ~any(ismember(excludeAnalysis, {'11',lower('spatialModulation')}))
     try
         spikes = loadSpikes;
-        getSessionTracking('roiTracking','manual','forceReload',false,'LED_threshold',LED_threshold,'convFact',tracking_pixel_cm);
+        getSessionTracking('roiTracking','manual','forceReload',false,'LED_threshold',LED_threshold,'convFact',tracking_pixel_cm,'leftTTL_reward',leftArmTtl_channel,'rightTTL_reward',rightArmTtl_channel);
         try
             getSessionArmChoice('task','alternation','leftArmTtl_channel',leftArmTtl_channel,'rightArmTtl_channel',rightArmTtl_channel,'homeDelayTtl_channel',homeDelayTtl_channel);
         catch
