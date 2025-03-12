@@ -2,15 +2,16 @@
 % place your code to run an analysis across all sessions for a given
 % project
 
-clear; close all
+clear all; close all
 targetProject= 'LightInInh';
 targetBehavior = 'linear maze';
 
 HCB_directory = what('HippoCookBook'); 
 
+
 sessionsTable = readtable([HCB_directory.path filesep 'indexedSessions.csv']); % the variable is called allSessions
 
-for ii = 190 : length(sessionsTable.SessionName)
+for ii = 86 : length(sessionsTable.SessionName)
      %% Analysis general all over Camkii/32 animal
     if contains(sessionsTable.Project{ii}, targetProject) || strcmpi('all', targetProject)
 
@@ -26,16 +27,17 @@ for ii = 190 : length(sessionsTable.SessionName)
             monosyn_inh_win = [0.001 0.021]; % 01to21
             monosyn_control_win = [-0.041 -0.021];
 
-            parfor mm = 1:spikes.numcells
+            for mm = 1:spikes.numcells
                 disp(mm);
                 uLEDResponses_interval{mm} = getuLEDResponse_intervals([spikes_times{mm} + monosyn_inh_win(1) spikes_times{mm} + monosyn_inh_win(2)],...
-                    'saveMat', false,'numRep',500,'doPlot', false,'getRaster', false, 'verbose', false);
-                uLEDResponses_control{mm} = getuLEDResponse_intervals([spikes_times{mm} + monosyn_control_win(1) spikes_times{mm} + monosyn_control_win(2)],...
-                    'saveMat', false,'numRep',500,'doPlot', false,'getRaster', false, 'verbose', false);
+                    'saveMat', false,'numRep',500,'doPlot', false,'getRaster', false, 'verbose', false, 'boostraping_type','pulses');
+                % uLEDResponses_control{mm} = getuLEDResponse_intervals([spikes_times{mm} + monosyn_control_win(1) spikes_times{mm} + monosyn_control_win(2)],...
+                %     'saveMat', false,'numRep',500,'doPlot', false,'getRaster', false, 'verbose', false);
+                % 
             end
 
             collision_metrics_1_21 = get_light_spike_CollisionMetrics(uLEDResponses_interval,'label','1msTo21ms','saveMat',true,'update_cell_metrics',true,'save_as','lightSpikeCollisions','rate_change_threshold',3);
-            collision_metrics_control = get_light_spike_CollisionMetrics(uLEDResponses_control,'label','control','saveMat',true,'update_cell_metrics',true,'save_as','lightSpikeCollisions_control','rate_change_threshold',3);
+            % collision_metrics_control = get_light_spike_CollisionMetrics(uLEDResponses_control,'label','control','saveMat',true,'update_cell_metrics',true,'save_as','lightSpikeCollisions_control','rate_change_threshold',3);
 
             clear uLEDResponses_interval
             clear uLEDResponses_control
@@ -45,6 +47,11 @@ for ii = 190 : length(sessionsTable.SessionName)
         % end
     end
 end
+
+
+
+
+
 
 %% Analysis for pre and post synaptic changes
 
