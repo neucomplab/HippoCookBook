@@ -417,7 +417,7 @@ for kk = 1:length(uLEDPulses.list_of_conditions)
            end
         end
 end
-
+end
  %%%%%%%%% SEAL OF MARTA APPORVAL -written by Mario
 out_interval.timestamps = t;
 in_interval.timestamps = t;
