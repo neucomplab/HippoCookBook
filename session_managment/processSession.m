@@ -33,6 +33,7 @@ addParameter(p,'rejectChannels',[],@isnumeric); % 0-index
 addParameter(p,'force_analogPulsesDetection',true,@islogical);
 addParameter(p,'force_loadingSpikes',true,@islogical);
 addParameter(p,'excludePulsesIntervals',[],@isnumeric);
+addParameter(p,'thetaChannel',[],@isnumeric);
 addParameter(p,'rippleChannel',[],@isnumeric);% manually selecting ripple Channel in case getHippocampalLayers does not provide a right output
 addParameter(p,'SWChannel',[],@isnumeric); % manually selecting SW Channel in case getHippocampalLayers does not provide a right output
 addParameter(p,'digital_optogenetic_channels',[],@isnumeric);
@@ -65,6 +66,7 @@ rejectChannels = p.Results.rejectChannels;
 force_analogPulsesDetection = p.Results.force_analogPulsesDetection;
 force_loadingSpikes = p.Results.force_loadingSpikes;
 excludePulsesIntervals = p.Results.excludePulsesIntervals;
+thetaChannel = p.Results.thetaChannel;
 rippleChannel = p.Results.rippleChannel;
 SWChannel = p.Results.SWChannel;
 digital_optogenetic_channels = p.Results.digital_optogenetic_channels;
@@ -298,8 +300,8 @@ end
 %% 9. Phase Modulation
 if ~any(ismember(excludeAnalysis, {'9',lower('phaseModulation')}))
     % LFP-spikes modulation
-    % [phaseMod] = computePhaseModulation('rippleChannel',rippleChannel,'SWChannel',SWChannel,'thetaChannel',thetaChannel,'lgammaChannel',thetaChannel,'hgammaChannel',thetaChannel,'restrict_to',restrict_ints);
-    [phaseMod] = computePhaseModulation('rippleChannel',rippleChannel,'SWChannel',SWChannel,'restrict_to',restrict_ints);
+    [phaseMod] = computePhaseModulation('rippleChannel',rippleChannel,'SWChannel',SWChannel,'thetaChannel',thetaChannel,'lgammaChannel',thetaChannel,'hgammaChannel',thetaChannel,'restrict_to',restrict_ints);
+    % [phaseMod] = computePhaseModulation('rippleChannel',rippleChannel,'SWChannel',SWChannel,'restrict_to',restrict_ints);
     computeCofiringModulation;
 end
 
