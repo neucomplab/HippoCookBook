@@ -3,7 +3,7 @@
 % sessions = {'Y:\fCamk7\fCamk7_220418_sess14','Y:\fCamk7\fCamk7_220419_sess15','Y:\fCamk7\fCamk7_220420_sess16','Y:\fCamk7\fCamk7_220421_sess17','Y:\fCamk7\fCamk7_220422_sess18'};
 % sessions = {'Y:\fCamk7\fCamk7_220418_sess14','Y:\fCamk7\fCamk7_220419_sess15','Y:\fCamk7\fCamk7_220420_sess16'};
 % sessions = {'Y:\fCamk7\fCamk7_220418_sess14','Y:\fCamk7\fCamk7_220420_sess16','Y:\fCamk7\fCamk7_220421_sess17','Y:\fCamk7\fCamk7_220422_sess18'};
-sessions = {'Y:\fCamk7\fCamk7_220418_sess14/CEBRA analysis','Y:\fCamk7\fCamk7_220420_sess16/CEBRA analysis','Y:\fCamk7\fCamk7_220421_sess17/CEBRA analysis','Y:\fCamk7\fCamk7_220422_sess18/CEBRA analysis'};
+sessions = {'Y:\fCamk7\fCamk7_220418_sess14/CEBRA analysis','Y:\fCamk7\fCamk7_220419_sess15/CEBRA analysis','Y:\fCamk7\fCamk7_220420_sess16/CEBRA analysis','Y:\fCamk7\fCamk7_220421_sess17/CEBRA analysis','Y:\fCamk7\fCamk7_220422_sess18/CEBRA analysis'};
 
 for ii = 1:length(sessions)
 
@@ -94,8 +94,8 @@ colors.int3 = color_int3;
 colors.int3_dark = color_int3_dark;
 colors.int4 = color_int4;
 colors.int4_dark = color_int4_dark;
-colors.int5 = color_int5;
-colors.int5_dark = color_int5_dark;
+% colors.int5 = color_int5;
+% colors.int5_dark = color_int5_dark;
 
 figure;
 [gs_leaveOneOut_predicted] = groupStats({int1_error, int2_error, int3_error, int4_error},...
@@ -104,7 +104,7 @@ ylim([0 40]);
 set(gca,'XTick',[1 2 3 4],'XTickLabel',{'PV-SST-ID2' 'PV-ID2-VIP', 'PV-SST-VIP','SST-ID2-VIP'},'XTickLabelRotation',45);
 ylabel('Decoding error (cm)');
 %%
-sessions = {'Y:\fCamk7\fCamk7_220418_sess14','Y:\fCamk7\fCamk7_220420_sess16','Y:\fCamk7\fCamk7_220421_sess17','Y:\fCamk7\fCamk7_220422_sess18'};
+sessions = {'Y:\fCamk7\fCamk7_220418_sess14','Y:\fCamk7\fCamk7_220419_sess15','Y:\fCamk7\fCamk7_220420_sess16','Y:\fCamk7\fCamk7_220421_sess17','Y:\fCamk7\fCamk7_220422_sess18'};
 
 for ii = 1:length(sessions)
 
@@ -208,8 +208,8 @@ colors.int3 = color_int3;
 colors.int3_dark = color_int3_dark;
 colors.int4 = color_int4;
 colors.int4_dark = color_int4_dark;
-colors.int5 = color_int5;
-colors.int5_dark = color_int5_dark;
+% colors.int5 = color_int5;
+% colors.int5_dark = color_int5_dark;
 
 colors.id2 = color_id2;
 colors.id2_dark = color_id2_dark;
@@ -255,8 +255,8 @@ colors.int3 = color_int3;
 colors.int3_dark = color_int3_dark;
 colors.int4 = color_int4;
 colors.int4_dark = color_int4_dark;
-colors.int5 = color_int5;
-colors.int5_dark = color_int5_dark;
+% colors.int5 = color_int5;
+% colors.int5_dark = color_int5_dark;
 
 % figure
 % [gs_predicted] = groupStats({camk2_error, camk2_shuffled_error, camk2_counter_error, camk2_shuffled_counter_error, int_error, int_shuffled_error},...

@@ -88,6 +88,7 @@ if isempty(list_of_paths)
         project_list_temp{1,length(project_list_temp)+1} = ' ';
     end    
     project_list_temp(end) = [];
+
     project_list = unique(split([project_list_temp{:}],' '));
     
     for ii = 1:length(project_list)
@@ -211,14 +212,42 @@ for ii = 1:length(sessions.basepaths)
     
     % loop results
     for jj= 1:length(list_of_results)
-        targetFile = dir(['*.' list_of_results{jj} '*.mat']); 
+        % targetFile = dir(['*.' list_of_results{jj} '*.mat']); 
+        targetFile = dir(['*.' list_of_results{jj} '.mat']);
         name_of_result = replace(list_of_results{jj},{'.','*'},'');
         list_of_results2{jj} = name_of_result;
         if isempty(targetFile)
             projectSessionResults.(name_of_result){ii} = NaN;
+            warning(['Not possible to load: ', name_of_result]);
         else
             projectSessionResults.(name_of_result){ii} = importdata(targetFile.name);
         end
+    end
+
+    try
+        if isfield(projectSessionResults,'fiber_psth_ripples')
+            if isstruct(projectSessionResults.fiber_psth_ripples{ii})
+                projectSessionResults.num_ripples(ii) = length(projectSessionResults.fiber_psth_ripples{ii}.times);
+            else
+                 projectSessionResults.num_ripples(ii) = NaN;
+            end
+        end
+        if isfield(projectSessionResults,'fiber_psth_ripples_PreSleep2') 
+            if isstruct(projectSessionResults.fiber_psth_ripples_PreSleep2{ii})
+                projectSessionResults.num_ripples_pre(ii) = length(projectSessionResults.fiber_psth_ripples_PreSleep2{ii}.times);
+            else
+                projectSessionResults.num_ripples_pre(ii) = NaN;
+            end
+        end
+        if isfield(projectSessionResults,'fiber_psth_ripples_PostSleep2')
+            if isstruct(projectSessionResults.fiber_psth_ripples_PostSleep2{ii})
+                projectSessionResults.num_ripples_post(ii) = length(projectSessionResults.fiber_psth_ripples_PostSleep2{ii}.times);
+            else
+                projectSessionResults.num_ripples_post(ii) = NaN;
+            end
+        end
+    catch
+
     end
     
     % if lightversion and checking fields
@@ -257,6 +286,11 @@ for ii = 1:length(list_of_results2)
          warning([list_of_results2{ii} ' was not staked!']);
     end
 end
+
+% stack results with different samples than neurons (i.e ripple events)
+projectResults.fiber_psth_ripples = stackSessionResult(projectSessionResults.fiber_psth_ripples,projectSessionResults.num_ripples);
+projectResults.fiber_psth_ripples_PreSleep2 = stackSessionResult(projectSessionResults.fiber_psth_ripples_PreSleep2,projectSessionResults.num_ripples_pre);
+projectResults.fiber_psth_ripples_PostSleep2 = stackSessionResult(projectSessionResults.fiber_psth_ripples_PostSleep2,projectSessionResults.num_ripples_post);
 
 
 projectResults.cell_metrics = cell_metrics;
