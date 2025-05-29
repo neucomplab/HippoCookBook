@@ -59,7 +59,7 @@ addParameter(p,'restrict_to_baseline',true,@islogical);
 addParameter(p,'restrict_to_manipulation',false,@islogical);
 addParameter(p,'duration_pulse',0.020,@isnumeric);
 addParameter(p,'save_as','uLEDResponse_interval',@ischar);
-addParameter(p,'boostraping_type','pulses',@ischar);
+% addParameter(p,'boostraping_type','pulses',@ischar);
 addParameter(p,'interpolate_pulse_sides',true,@islogical); % 
 
 % declare global variables
@@ -93,7 +93,7 @@ restrict_to_baseline = p.Results.restrict_to_baseline;
 restrict_to_manipulation = p.Results.restrict_to_manipulation;
 duration_pulse = p.Results.duration_pulse;
 save_as = p.Results.save_as;
-boostraping_type = p.Results.boostraping_type;
+% boostraping_type = p.Results.boostraping_type;
 interpolate_pulse_sides = p.Results.interpolate_pulse_sides;
 
 % Deal with inputs
@@ -128,17 +128,17 @@ CONDITION =[];
 if length(uLEDPulses.list_of_conditions) > 1
        
     CONDITION_LIST = uLEDPulses.list_of_conditions(find(uLEDPulses.list_of_durations == duration_pulse))';
-    CONDITION = CONDITION_LIST(unique(uLEDPulses.conditionID) == CONDITION_LIST);
+    % CONDITION = CONDITION_LIST(unique(uLEDPulses.conditionID) == CONDITION_LIST);
       
-    uLEDPulses.conditionID =uLEDPulses.conditionID(find(uLEDPulses.conditionID == CONDITION));
-    uLEDPulses.timestamps = uLEDPulses.timestamps(find(uLEDPulses.conditionID == CONDITION),:);
-    uLEDPulses.code = uLEDPulses.code(find(uLEDPulses.conditionID == CONDITION));
+    uLEDPulses.conditionID =uLEDPulses.conditionID(find(uLEDPulses.conditionID == CONDITION_LIST));
+    uLEDPulses.timestamps = uLEDPulses.timestamps(find(uLEDPulses.conditionID == CONDITION_LIST),:);
+    uLEDPulses.code = uLEDPulses.code(find(uLEDPulses.conditionID == CONDITION_LIST));
     
     uLEDPulses.list_of_epochs = 1;
     uLEDPulses.list_of_conditions = 1;
     uLEDPulses.list_of_durations(find(uLEDPulses.list_of_durations ~= duration_pulse)) =[];
     % uLEDPulses.conditionID = ones(length(uLEDPulses.conditionID),1); 
-    uLEDPulses.conditionID = ones(length(uLEDPulses.conditionID(find(uLEDPulses.conditionID == CONDITION))),1); 
+    uLEDPulses.conditionID = ones(length(uLEDPulses.conditionID(find(uLEDPulses.conditionID == CONDITION_LIST))),1); 
 
    % % INDEX = find(round(diff(uLEDPulses.timestamps'),3)==0.02)';
    % uLEDPulses.timestamps = uLEDPulses.timestamps(find(round(diff(uLEDPulses.timestamps'),3)==0.02)',:);
@@ -314,7 +314,7 @@ for kk = 1:length(uLEDPulses.list_of_conditions)
          end
         
         times = spikes.times;        
-        if ~isempty(pulses)
+        if ~isempty(pulses) && length(pulses) > minNumberOfPulses
             times{length(times)+1} = pulses(status==1,1); 
             times{length(times)+1} = pulses(status==0,1); 
             
@@ -381,7 +381,6 @@ for kk = 1:length(uLEDPulses.list_of_conditions)
             out_interval.is_rateBeforePulse_similar_p(ii,kk,jj,1) = p;
         end
         
-
         % computation for boostraping
         temp = permute(squeeze(stccg(:, numberOfcells+3:end, 1:numberOfcells)), [3,1,2]);
         
@@ -573,7 +572,6 @@ uLEDResponses_interval_raster.out_interval = out_interval_raster;
 
 uLEDResponses_interval.in_interval = in_interval;
 uLEDResponses_interval.out_interval = out_interval;
-
 
 Temp_rand ={};
 for mm= 1 : numRep
