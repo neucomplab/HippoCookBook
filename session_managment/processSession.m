@@ -55,7 +55,7 @@ addParameter(p,'restrict_to',[0 Inf],@isnumeric);
 addParameter(p,'restrict_to_baseline',true,@islogical);
 addParameter(p,'restrict_to_manipulation',false,@islogical);
 addParameter(p,'selectProbe_automatic',false,@islogical);
-addParameter(p,'use_manual_ttls',false,@islogical),
+addParameter(p,'use_manual_ttls',false,@islogical);
 
 parse(p,varargin{:})
 
@@ -95,6 +95,7 @@ use_manual_ttls = p.Results.use_manual_ttls;
 % Deal with inputs
 prevPath = pwd;
 cd(basepath);
+keyboard;
 
 mkdir('SummaryFigures')
 if createLegacySummaryFolder
@@ -284,7 +285,8 @@ if ~any(ismember(excludeAnalysis, {'8',lower('eventsModulation')}))
     getSpikesRank('events','upstates');
 
     % 8.2 Ripples
-    ripples = rippleMasterDetector('rippleChannel',rippleChannel,'SWChannel',SWChannel,'force',true,'skipStimulationPeriods',false,'thresholds',rippleMasterDetector_threshold,'eventSpikeThreshold',eventSpikeThreshold); 
+    rippleMasterDetector_threshold= [0.5 1];
+    ripples = rippleMasterDetector('rippleChannel',rippleChannel,'SWChannel',SWChannel,'force',true,'skipStimulationPeriods',false,'eventSpikeThreshold',false,'thresholds',rippleMasterDetector_threshold); 
     psthRipples = spikesPsth([],'eventType','ripples','numRep',500,'force',true,'minNumberOfPulses',10);
     % psthRipples = spikesPsth([],'eventType','ripples','numRep',500,'force',true,'minNumberOfPulses',10,'restrict_to_manipulation',true);
     getSpikesRank('events','ripples');
