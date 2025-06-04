@@ -70,7 +70,6 @@ deb = p.Results.deb;
 restrict_intervals = p.Results.restrict_intervals;
 restrict_fiber_epochs = p.Results.restrict_fiber_epochs;
 
-
 session = loadSession();
 % Load fiber
 fiber = getSessionFiberPhotometry_temp();
@@ -82,7 +81,7 @@ end
 
 if strcmpi(eventType,'ripples')
     if isempty(timestamps)
-        ripples = rippleMasterDetector;
+        ripples = rippleMasterDetector('thresholds',[0.5 1]);
         timestamps = ripples.peaks;
     end
     warning('Using default parameters for ripples!');
@@ -271,7 +270,7 @@ for jj = 1:max(timestamps(:,2))
     % red
     f_red_prctl20 = prctile(fiber.red,20);
     
-    for ii = 1:size(red{jj}.responsecurve)
+    for ii = 1: min(size(red{jj}.responsecurve))
         if numberOfPulses > minNumberOfPulses
             red{jj}.responsecurveSmooth(ii,:) = smooth(red{jj}.responsecurve(ii,:));
             red{jj}.responsecurveZ(ii,:) = (red{jj}.responsecurve(ii,:)...
@@ -293,7 +292,7 @@ for jj = 1:max(timestamps(:,2))
     % red_smooth
     f_red_smooth_prctl20 = prctile(fiber.red_fpa.fSmoothed,20);
     
-    for ii = 1:size(red_smooth{jj}.responsecurve)
+    for ii = 1:min(size(red_smooth{jj}.responsecurve))
         if numberOfPulses > minNumberOfPulses
             red_smooth{jj}.responsecurveSmooth(ii,:) = smooth(red_smooth{jj}.responsecurve(ii,:));
             red_smooth{jj}.responsecurveZ(ii,:) = (red_smooth{jj}.responsecurve(ii,:)...
@@ -312,7 +311,7 @@ for jj = 1:max(timestamps(:,2))
     % red_normalized
     f_red_normalized_prctl20 = prctile(fiber.red_fpa.fNormalized,20);
     
-    for ii = 1:size(red_normalized{jj}.responsecurve)
+    for ii = 1:min (size(red_normalized{jj}.responsecurve))
         if numberOfPulses > minNumberOfPulses
             red_normalized{jj}.responsecurveSmooth(ii,:) = smooth(red_normalized{jj}.responsecurve(ii,:));
             red_normalized{jj}.responsecurveZ(ii,:) = (red_normalized{jj}.responsecurve(ii,:)...
@@ -330,7 +329,7 @@ for jj = 1:max(timestamps(:,2))
     % green
     f_green_normalized_prctl20 = prctile(fiber.red_fpa.fNormalized,20);
     
-    for ii = 1:size(green{jj}.responsecurve)
+    for ii = 1:min(size(green{jj}.responsecurve))
         if numberOfPulses > minNumberOfPulses
             green{jj}.responsecurveSmooth(ii,:) = smooth(green{jj}.responsecurve(ii,:));
             green{jj}.responsecurveZ(ii,:) = (green{jj}.responsecurve(ii,:)...
@@ -348,7 +347,7 @@ for jj = 1:max(timestamps(:,2))
     % green smooth
     f_green_smooth_prctl20 = prctile(fiber.green_fpa.fSmoothed,20);
     
-    for ii = 1:size(green_smooth{jj}.responsecurve)
+    for ii = 1:min(size(green_smooth{jj}.responsecurve))
         if numberOfPulses > minNumberOfPulses
             green_smooth{jj}.responsecurveSmooth(ii,:) = smooth(green_smooth{jj}.responsecurve(ii,:));
             green_smooth{jj}.responsecurveZ(ii,:) = (green_smooth{jj}.responsecurve(ii,:)...
@@ -365,7 +364,7 @@ for jj = 1:max(timestamps(:,2))
     % green normalized
     f_green_normalized_prctl20 = prctile(fiber.green_fpa.fNormalized,20);
     
-    for ii = 1:size(green_normalized{jj}.responsecurve)
+    for ii = 1:min(size(green_normalized{jj}.responsecurve))
         if numberOfPulses > minNumberOfPulses
             green_normalized{jj}.responsecurveSmooth(ii,:) = smooth(green_normalized{jj}.responsecurve(ii,:));
             green_normalized{jj}.responsecurveZ(ii,:) = (green_normalized{jj}.responsecurve(ii,:)...
