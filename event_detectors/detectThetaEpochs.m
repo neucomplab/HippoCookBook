@@ -4,7 +4,7 @@ function [thetaEpochs] = detectThetaEpochs(varargin)
 % 
 % INPUTS
 % <optional>
-% 'basepath'          Default pwd
+% 'basepath'            Default pwd
 % 'lfp'                 buzcode-formatted lfp structure (use bz_GetLFP)
 %                           needs fields: lfp.data, lfp.timestamps, lfp.samplingRate.
 %                           If empty or no exist, look for lfp in basePath folder
@@ -20,7 +20,7 @@ function [thetaEpochs] = detectThetaEpochs(varargin)
 % 'discardRipples'      Discard ripples from nonTheta, default true.
 % 
 % OUTPUT
-% thetaEpochs         states structure with theta epochs intervals
+% thetaEpochs           states structure with theta epochs intervals
 %
 % Manu Valero 2022
 % Include theta/delta ratio
