@@ -65,7 +65,6 @@ addParameter(p,'saveMat',true,@islogical);
 addParameter(p,'dlc_ttl_channel',[],@isnumeric); % by default, 5
 addParameter(p,'interpolate_misstrackings',true);
 addParameter(p,'use_dlc_likelihood',0.7); % Default > 70%
-addParameter(p,'use_roi_led',true);
 
 % addParameter(p,'RGBChannel',[],@isstr);
 
@@ -88,7 +87,6 @@ rightTTL_reward = p.Results.rightTTL_reward;
 homeTtl = p.Results.homeTtl;
 interpolate_misstrackings = p.Results.interpolate_misstrackings;
 use_dlc_likelihood = p.Results.use_dlc_likelihood;
-use_roi_led = p.Results.use_roi_led;
 
 %% Deal with inputs
 if ~isempty(dir([basepath filesep '*Tracking.Behavior.mat'])) && forceReload
@@ -162,7 +160,7 @@ end
 average_frame = mean(frames.r,3);                                          % get average frames
 
 % deal with the ROI for the LED
-if use_roi_led
+if ~isempty(dlc_ttl_channel)
     cd(basepath); cd ..; upBasepath = pwd; pwd; cd ..; up_upBasepath = pwd;cd(basepath);
     if exist([basepath filesep 'roiLED.mat'],'file')
         load([basepath filesep 'roiLED.mat'],'roiLED');
@@ -202,7 +200,7 @@ h1 = figure;
 hold on
 imagesc(xMaze, yMaze,average_frame); colormap gray;
 set(gca,'YDir','normal', 'TickDir','out');
-if exist(roiLED,'var')
+if ~isempty(roiLED)
     p = plot(roiLED(:,1)*convFact, roiLED(:,2)*convFact,'r','LineWidth',2);
     legend(p,'LED ROI');
 end
@@ -239,6 +237,7 @@ try
     end
 
 catch
+    error('')
 end
 
 %% Postprocessing of position
@@ -400,7 +399,7 @@ if isempty(pul) || pul(1,1) < 1 || pul(1,1) > 1200 % if blinked light few than 1
     if lReward < rReward % If the animal turned left first, find the location based on the IR location
         disp('Mouse turned left first. Mark y-position for left IR sensor...');
         roiIR = drawpoint;
-        idx = find((y <= (roiIR.Position(2)+0.75)) & (y >= (roiIR.Position(2)- 0.75)) & x<20); %% tentative left IR location
+        idx = find((y <= (roiIR.Position(2)+0.03)) & (y >= (roiIR.Position(2)- 0.03)) & x<0.1); %% tentative left IR location
         % timediff = lReward-dlcTtl(idx(1));
         % % correct TTLs
         % dlcTtl = dlcTtl + timediff;
