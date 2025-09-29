@@ -260,7 +260,7 @@ for ii = 1:length(sessions.basepaths)
             projectSessionResults.(name_of_result){ii} = importdata(targetFile.name);
         end
     end
-  
+
     % if lightversion and checking fields
     if isfield(projectSessionResults,'optogeneticResponse') && ~isfield(projectSessionResults.optogeneticResponse{ii},'checkedCells') && isfield(projectSessionResults.optogeneticResponse{ii},'bootsTrapRate')
          projectSessionResults.optogeneticResponse{ii}.checkedCells = zeros(length(projectSessionResults.optogeneticResponse{ii}.bootsTrapRate(:,1)),1);
@@ -298,25 +298,20 @@ for ii = 1:length(list_of_results2)
     end
 end
 
- % session, genetic line, experimentalSubject
-    counCell = 1;
-    for ii = 1:length(projectSessionResults.numcells)
-        for jj = 1:projectSessionResults.numcells(ii)
-            % session
-            projectResults.session{counCell} = lower(projectSessionResults.sessionName{ii});
-            projectResults.sessionNumber(counCell) = ii;
-            
-            % geneticLine
-            projectResults.geneticLine{counCell} = lower(projectSessionResults.geneticLine{ii});
-            
-            % expSubject
-             projectResults.expSubject{counCell} = lower(projectSessionResults.expSubject{ii});
-             counCell = counCell + 1;
-        end
+% session, genetic line, experimentalSubject
+counCell = 1;
+for ii = 1:length(projectSessionResults.numcells)
+    for jj = 1:projectSessionResults.numcells(ii)
+        % session
+        projectResults.session{counCell} = lower(projectSessionResults.sessionName{ii});
+        projectResults.sessionNumber(counCell) = ii;
+        % geneticLine
+        projectResults.geneticLine{counCell} = lower(projectSessionResults.geneticLine{ii});
+        % expSubject
+        projectResults.expSubject{counCell} = lower(projectSessionResults.expSubject{ii});
+        counCell = counCell + 1;
     end
-     
-  
-projectResults.cell_metrics = cell_metrics;
+end
 
 projectResults.sessionList = unique(projectResults.session);
 projectResults.geneticLineList = unique(projectResults.geneticLine);
