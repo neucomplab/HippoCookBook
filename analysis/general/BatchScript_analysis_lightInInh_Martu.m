@@ -11,7 +11,7 @@ HCB_directory = what('HippoCookBook');
 
 sessionsTable = readtable([HCB_directory.path filesep 'indexedSessions.csv']); % the variable is called allSessions
 
-for ii = 250: length(sessionsTable.SessionName)
+for ii = 56: length(sessionsTable.SessionName)
      %% Analysis general all over Camkii/32 animal
     if contains(sessionsTable.Project{ii}, targetProject) || strcmpi('all', targetProject)
 
@@ -36,7 +36,7 @@ for ii = 250: length(sessionsTable.SessionName)
                 % 
             end
 
-            collision_metrics_1_21 = get_light_spike_CollisionMetrics(uLEDResponses_interval,'label','1msTo21ms','saveMat',true,'update_cell_metrics',true,'save_as','lightSpikeCollisions','rate_change_threshold',3);
+            collision_metrics_1_21 = get_light_spike_CollisionMetrics(uLEDResponses_interval,'label','1msTo21ms','saveMat',true,'update_cell_metrics',false,'save_as','lightSpikeCollisions_randInt','rate_change_threshold',3, 'rand_analysis',true);
             % collision_metrics_control = get_light_spike_CollisionMetrics(uLEDResponses_control,'label','control','saveMat',true,'update_cell_metrics',true,'save_as','lightSpikeCollisions_control','rate_change_threshold',3);
 
             clear uLEDResponses_interval
@@ -55,7 +55,7 @@ end
 
 %% Analysis for pre and post synaptic changes
 
-for ii = 56 :length(sessionsTable.SessionName)
+for ii = 57 :length(sessionsTable.SessionName)
     
     if contains(sessionsTable.Project{ii}, targetProject) && contains(sessionsTable.Behavior{ii},targetBehavior) || strcmpi('all', targetProject) 
         
@@ -100,5 +100,3 @@ for ii = 56 :length(sessionsTable.SessionName)
     end 
 end
 
-%%% your code goes here...
-% writetable(sessionsTable,[HCB_directory.path filesep 'indexedSessions.csv']); % the variable is called allSessions
