@@ -29,6 +29,12 @@ cd(basepath);
 session = loadSession;
 sr = session.extracellular.srLfp;
 
+if isempty(theta_channel)
+    targetFile = dir('*.thetaEpochs.states.mat');
+    load(targetFile.name,'thetaEpochs');
+    theta_channel = thetaEpochs.channel;  
+end
+
 % Detecting theta oscillations
 lfp_theta = getLFP(theta_channel, 'noPrompts', true);        % 
 lfp_theta_filt = bz_Filter(lfp_theta, 'passband', theta_bandpass, 'filter', 'butter', 'order', 3);
@@ -45,6 +51,7 @@ lfp_theta_filt = double(lfp_theta_filt.data);
 hilb_theta = hilbert(lfp_theta_filt);           % analytic signal
 envelope_theta = abs(hilb_theta);           %  envelope
 amp_threshold = amplitude_threshold * max(envelope_theta);
+
 % 2.3 Find valid cycles: peak-trough-peak
 % They took as a valid cycle sequences having their peak-trough and trough-peak intervals falling within the 31 to 100 ms range 
 % (corresponding to the half period of cycles with frequencies ranging from  ~16 to 4 Hz); 
