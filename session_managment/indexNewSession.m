@@ -127,6 +127,7 @@ end
 
 if ~isempty(behav)
     behav(end) = [];
+    behav = unique(behav);
     if isempty(behav)
         behav{1,1} = 'no';
     end
