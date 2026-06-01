@@ -28,6 +28,14 @@ indexNewSession('basepath','Z:\unindexedSubjects\asso1\asso1_260402_sess1');
 indexNewSession('basepath','Z:\unindexedSubjects\asso1\asso1_260403_sess2');
 indexNewSession('basepath','Z:\unindexedSubjects\asso1\asso1_260408_sess3');
 indexNewSession('basepath','Z:\unindexedSubjects\asso1\asso1_260420_sess4');
+
+indexNewSession('basepath','Z:\unindexedSubjects\asso1\asso1_260421_sess5');
+indexNewSession('basepath','Z:\unindexedSubjects\asso1\asso1_260422_sess6');
+indexNewSession('basepath','Z:\unindexedSubjects\asso1\asso1_260423_sess7');
+indexNewSession('basepath','Z:\unindexedSubjects\asso1\asso1_260424_sess8');
+
+
+
 %% cancer8
 updateExpFolder_temp({'E:\cancer8'},'D:\cancer8');
 
