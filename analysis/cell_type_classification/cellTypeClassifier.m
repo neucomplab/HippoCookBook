@@ -1,24 +1,49 @@
 function [cell_types, cell_classification_stats, cell_metrics, cell_subtypes] = cellTypeClassifier(varargin)
-% [cell_types, cell_metrics] = cellTypeClassifier(varargin)
+% [cell_types, cell_classification_stats, cell_metrics, cell_subtypes] = cellTypeClassifier(varargin)
 %   Cell type classification pipeline with hierarchical model for hippocampus5:
-%   - VIP strict rule: only accept VIP if it is argmax AND P(VIP) >= thrVip; otherwise 'unknown'
+%   - Level 1: CaMK2 vs rest (SVM score >= camk2_threshold)
+%   - Level 2 (non-CaMK2): ID2/PV/SST/VIP. VIP strict rule: only accept VIP
+%     if it is argmax AND P(VIP) >= thrVip; otherwise 'unknown'
 %   - score_cut_off is applied ONLY to interneurons (non-CaMK2)
+%   - cells with a missing (NaN/Inf) feature are 'Undetermined'
 %
-% MV 2025
+% INPUTS (name-value)
+%   basepath               Session folder (default: pwd)
+%   cell_metrics           cell_metrics to classify (default: loaded from basepath).
+%                          Can be a batch of sessions (e.g. projectResults.cell_metrics)
+%   thetaMod               Theta phase locking r per cell (default: *theta_6-12.PhaseLockingData)
+%   ripples_psth           For the ID2 SNCG subtype (default: *ripples_psth.cellinfo.mat)
+%   modelType              'hippocampus5' (default), 'forebrain5', 'forebrain4'
+%   score_cut_off          Min posterior for interneurons (default: .70)
+%   pv_sst_tradeoff        0 = favor SST, 0.5 = neutral, 1 = favor PV (default: .25)
+%   camk2_threshold        Min SVM score for CaMK2+ (default: 0, as trained)
+%   imposeCellExplorerPyr  CellExplorer 'Pyramidal Cell' -> CAMK2+ (default: false)
+%   force                  Re-classify if already in cell_metrics (default: false)
+%   overwrite_cell_metrics Save into the session cell_metrics (default: true,
+%                          false when cell_metrics is given as input)
+%   doPlot                 Summary figure (default: true)
+%
+% OUTPUTS
+%   cell_types, cell_subtypes  Column cells, one label per cell
+%   cell_classification_stats  raw labels, score (posterior; 1 for CaMK2),
+%                              camk2_svm_score, noisy/below cut-off/missing features
+%
+% MV 2025, 2026
 
 %% Defaults and parameters
 p = inputParser;
-addParameter(p,'basepath',pwd,@isdir);
+addParameter(p,'basepath',pwd,@isfolder);
 addParameter(p,'cell_metrics',[],@isstruct);
 addParameter(p,'thetaMod',[]);
 addParameter(p,'modelType','hippocampus5',@ischar);
-addParameter(p,'overwrite_cell_metrics',true,@islogical);
+addParameter(p,'overwrite_cell_metrics',[],@(x) isempty(x) || islogical(x));
 addParameter(p,'score_cut_off',.70,@isnumeric);
 addParameter(p,'imposeCellExplorerPyr',false);
 addParameter(p,'ripples_psth',[],@isstruct);
-addParameter(p,'force',false,@logical);
+addParameter(p,'force',false,@islogical);
 addParameter(p,'pv_sst_tradeoff',.25,@(x) isscalar(x) && x>=0 && x<=1); %  Noisy units overcall PV, PV↔SST fader (0=SST, 0.5=neutral, 1=PV);
-addParameter(p,'doPlot',true); % 
+addParameter(p,'camk2_threshold',0,@(x) isnumeric(x) && isscalar(x));
+addParameter(p,'doPlot',true); %
 
 parse(p,varargin{:});
 
@@ -32,10 +57,18 @@ imposeCellExplorerPyr = p.Results.imposeCellExplorerPyr;
 ripples_psth = p.Results.ripples_psth;
 force = p.Results.force;
 pv_sst_tradeoff = p.Results.pv_sst_tradeoff;
+camk2_threshold = p.Results.camk2_threshold;
 doPlot = p.Results.doPlot;
+
+% a cell_metrics given as input (maybe a batch of sessions) is not saved
+% unless asked: it would overwrite the cell_metrics of the folder in basepath
+if isempty(overwrite_cell_metrics)
+    overwrite_cell_metrics = isempty(cell_metrics);
+end
 
 %% Collect data
 previousPath = pwd;
+backToPrevious = onCleanup(@() cd(previousPath)); % also on error
 cd(basepath);
 
 if isempty(cell_metrics)
@@ -47,7 +80,6 @@ if isfield(cell_metrics,'ground_truth_classification') && force == false
     cell_types = cell_metrics.ground_truth_classification.cell_types;
     cell_subtypes = cell_metrics.ground_truth_classification.cell_subtypes;
     cell_classification_stats = cell_metrics.ground_truth_classification.cell_classification_stats;
-    cd(previousPath);
     return
 end
 
@@ -104,7 +136,8 @@ switch modelType
 
         % --- 4) LEVEL 1: CaMK2 vs rest (uncalibrated SVM; threshold = 0 on score) ---
         [~, s1] = predict(P.Mdl1, Xmat);             % s1(:,2) = SVM score for CaMK2 (true)
-        isCam = s1(:,2) >= 0;                        % hard decision (threshold 0)
+        camk2_svm_score = s1(:,2);
+        isCam = camk2_svm_score >= camk2_threshold;  % hard decision (trained threshold: 0); NaN -> false
 
         % --- 5) Initialize outputs ---
         N = height(Xtbl);
@@ -187,8 +220,8 @@ switch modelType
         % Convert to cellstr for compatibility with the rest of the function
         cell_types = cellstr(cell_types);
 
-    case 'fobrebrain5'
-        % Legacy/alternative model: keep original behavior
+    case {'forebrain5', 'fobrebrain5'} % 'fobrebrain5': old misspelling, kept for compatibility
+        % Legacy/alternative model
         Mdl = importdata([directory.path filesep 'Mdl_forebrain5.mat']);
         T_feat = [cell_metrics.troughToPeak' ...
             cell_metrics.acg_tau_rise' ...
@@ -198,30 +231,37 @@ switch modelType
         T_feat = array2table(T_feat,'VariableNames',{'Spike_width','acg_tau_rise','ab_ratio', 'cv2'});
         T_feat.brainRegion = cell_metrics.brainRegion';
         [cell_types, score] = predict(Mdl,T_feat);
-
-    case 'fobrebrain4'
-        % Legacy/alternative model: keep original behavior
-        Mdl = importdata([directory.path filesep 'Mdl_forebrain4.mat']);
-        T_feat = [cell_metrics.troughToPeak' ...
-            cell_metrics.acg_tau_rise' ...
-            cell_metrics.ab_ratio' ...
-            cell_metrics.cv2' ...
-            ];
-        [cell_types, score] = predict(Mdl,T_feat);
+        score = max(score, [], 2); % score of the predicted class
 
     otherwise
-        warning('Model not recognized! Using forebrain4 model!');
+        if ~any(strcmp(modelType, {'forebrain4', 'fobrebrain4'}))
+            warning('Model %s not recognized! Using forebrain4 model!', modelType);
+        end
         Mdl = importdata([directory.path filesep 'Mdl_forebrain4.mat']);
         T_feat = [cell_metrics.troughToPeak' ...
             cell_metrics.acg_tau_rise' ...
             cell_metrics.ab_ratio' ...
             cell_metrics.cv2' ...
             ];
-        [cell_types, score] = predict(Mdl,T_feat);
+        T_feat = array2table(T_feat,'VariableNames',{'Spike_width','acg_tau_rise','ab_ratio', 'cv2'});
+        [cell_types, score] = predict(Mdl,T_feat{:,:});
+        score = max(score, [], 2); % score of the predicted class
 end
+cell_types = cellstr(cell_types(:));
+score = score(:);
+if ~exist('camk2_svm_score', 'var')
+    camk2_svm_score = nan(size(score));
+end
+
+% cells with a missing feature can not be classified (the models give the
+% first class, e.g. ID2+, with a NaN score that passes score_cut_off)
+missing_features = any(~isfinite(T_feat{:, varfun(@isnumeric, T_feat, 'OutputFormat', 'uniform')}), 2);
 
 % Normalize label variant if present
 cell_types(ismember(cell_types,'CAMK2')) = {'CAMK2+'};
+
+cell_types(missing_features) = {'Undetermined'};
+score(missing_features) = NaN;
 
 % Impose pyramidal cells from CellExplorer (conservative)
 if imposeCellExplorerPyr
@@ -281,8 +321,10 @@ if ~isempty(ripples_psth)
         Mdl_sncg = importdata([directory.path filesep 'Mdl_sncg.mat']);
         features = [log10(cell_metrics.acg_tau_rise)' cell_metrics.cv2' log10(cell_metrics.firingRate)' ripples_psth.rateZDuringPulse];
         predicted_sncg = predict(Mdl_sncg,features);  % do not overwrite main 'score'
-        cell_subtypes(ismember(cell_subtypes, 'ID2+') & predicted_sncg & ismember(cell_metrics.brainRegion, 'CA1sp')' & ripples_psth.rateZDuringPulse<3.5) = {'ID2_SNCG+'};
-        cell_subtypes(ismember(cell_subtypes, 'ID2+')) = {'ID2_NOSNCG+'};
+        inCA1sp = ismember(cell_metrics.brainRegion, 'CA1sp')';
+        cell_subtypes(ismember(cell_subtypes, 'ID2+') & predicted_sncg & inCA1sp & ripples_psth.rateZDuringPulse(:)<3.5) = {'ID2_SNCG+'};
+        % only CA1sp cells: the result does not depend on which sessions are classified together
+        cell_subtypes(ismember(cell_subtypes, 'ID2+') & inCA1sp) = {'ID2_NOSNCG+'};
     else
         warning('Sncg subtype definition was not possible...');
     end
@@ -292,6 +334,10 @@ end
 cell_classification_stats.noisy_units = is_noisy;
 cell_classification_stats.below_score_cut_off_units = (mask_ints & (score < score_cut_off));
 cell_classification_stats.score_cut_off = score_cut_off;
+cell_classification_stats.missing_features = missing_features;
+cell_classification_stats.camk2_svm_score = camk2_svm_score;
+cell_classification_stats.camk2_threshold = camk2_threshold;
+cell_classification_stats.pv_sst_tradeoff = pv_sst_tradeoff;
 cell_classification_stats.processed_cell_types = cell_types;
 cell_classification_stats.model = modelType;
 
@@ -306,7 +352,7 @@ end
 
 if doPlot
     % 1) Data from T_feat (shared across models)
-    X = T_feat{:,:};
+    X = T_feat{:, varfun(@isnumeric, T_feat, 'OutputFormat', 'uniform')};
 
     % 2) Impute NaNs (median per feature) and z-score
     for j = 1:size(X,2)
@@ -404,16 +450,21 @@ if doPlot
     title(ax2,'Class mix','FontWeight','normal'); axis(ax2,'square'); axis(ax2,'off');
 
     ax3 = nexttile(tl,3); hold(ax3,'on'); box(ax3,'on');
+    % cells without waveform (or with a different length, e.g. other probe) are not plotted
     CC = cell_metrics.waveforms.filt;
-    W = cell2mat(cellfun(@(v) v(:), CC, 'UniformOutput', false));
-    time = cell_metrics.waveforms.time{1};
-    
+    len = cellfun(@numel, CC);
+    validWf = len == mode(len(len > 0));
+    W = nan(mode(len(len > 0)), numel(CC));
+    W(:, validWf) = cell2mat(cellfun(@(v) v(:), CC(validWf), 'UniformOutput', false));
+    time = cell_metrics.waveforms.time{find(validWf, 1)};
+
     cell_classes = unique(cell_types);
     for ii = 1:length(cell_classes)
-        if length(find(ismember(cell_types, cell_classes(ii))==1))>1
-            plotFill(time, zscore(W(:, ismember(cell_types, cell_classes(ii)))',[],2), 'color', getColors(cell_classes(ii)), 'style', 'filled');
-        elseif length(find(ismember(cell_types, cell_classes(ii))==1))==1
-            plot(time, zscore(W(:, ismember(cell_types, cell_classes(ii)))',[],2),'-', 'color', getColors(cell_classes(ii)), 'LineWidth', 1);
+        inClass = ismember(cell_types, cell_classes(ii))' & validWf;
+        if sum(inClass) > 1
+            plotFill(time, zscore(W(:, inClass)',[],2), 'color', getColors(cell_classes(ii)), 'style', 'filled');
+        elseif sum(inClass) == 1
+            plot(time, zscore(W(:, inClass)',[],2),'-', 'color', getColors(cell_classes(ii)), 'LineWidth', 1);
         end
     end
     axis tight
@@ -441,13 +492,14 @@ if doPlot
     axis tight
     xlabel('Time (ms)');
     ylabel('Probability (normalized)');
-    try
-        saveas(fig, ['SummaryFigures\cell_familty_classification.png']);
-    catch
+    % saved in the session only when its cell_metrics is saved (not for batches)
+    if overwrite_cell_metrics
+        try
+            saveas(fig, fullfile('SummaryFigures', 'cell_family_classification.png'));
+        catch
+        end
     end
-    % exportgraphics(fig, ['SummaryFigures\cell_familty_classification.png']);
 
 end
 
-cd(previousPath);
 end
