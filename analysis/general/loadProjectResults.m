@@ -14,12 +14,19 @@ function [projectResults, projectSessionResults] =  loadProjectResults(varargin)
 %   list_of_paths         Cell with session folders. Skips the index entirely.
 %   index_path            Folder of the session index (default: getIndexedSessions default)
 %   analysis_project_path Folder for the .mat and the summaries (default: pwd)
-%   add_results           Cell with extra result names to load (see list below)
+%   results               Cell with the results to load, REPLACES the default
+%                         list (e.g. {'ripples_psth','ACGPeak'}). Default: list below
+%   add_results           Cell with extra result names added to the list
+%   keepSessionResults    Keep per-session copies of the results in
+%                         projectSessionResults (default: false: saves
+%                         memory, only the stacked results are kept).
 %   includeSpikes         Keep spikes per session (default: true)
 %   includeLFP            Keep LFP per session (default: false, ignored if lightVersion)
 %   lightVersion          Remove spike times and rasters (default: true)
 %   before_after          Also load cell_metrics_before/after (default: false)
-%   openCellExplorer      Open CellExplorer on the batch, close it to go on (default: true)
+%   openCellExplorer      Open CellExplorer on the batch, close it to go on (default: true).
+%                         It adds fields to cell_metrics (normalized ACGs,
+%                         z-scored waveforms, thetaPhase_zscored, labels, tags...)
 %   loadLast              Load the last saved .mat of this project instead (default: false)
 %   saveMat               Save results in analysis_project_path (default: true)
 %   saveSummaries         Copy SummaryFigures/Summary*.png (default: true)
@@ -27,8 +34,9 @@ function [projectResults, projectSessionResults] =  loadProjectResults(varargin)
 %
 % OUTPUTS
 %   projectResults        Results stacked across sessions, one row per cell,
-%                         plus session/geneticLine/expSubject per cell and
+%                         plus session/geneticLine/expSubject per cell,
 %                         sessionsTable (index rows of the loaded sessions)
+%                         and resultsFound (sessions x results, true if found)
 %   projectSessionResults Results per session (cells of length nSessions)
 %
 % EXAMPLES
@@ -51,7 +59,9 @@ addParameter(p,'list_of_sessions',[],isText);
 addParameter(p,'list_of_paths',[],@(x) isempty(x) || iscell(x));
 addParameter(p,'index_path',[],@(x) isempty(x) || ischar(x) || isstring(x));
 addParameter(p,'analysis_project_path',[],@(x) isempty(x) || isfolder(x));
+addParameter(p,'results',[],@(x) isempty(x) || iscell(x) || ischar(x));
 addParameter(p,'add_results',[],@(x) isempty(x) || iscell(x) || ischar(x));
+addParameter(p,'keepSessionResults',false,@islogical);
 addParameter(p,'includeSpikes',true,@islogical);
 addParameter(p,'includeLFP',false,@islogical);
 addParameter(p,'lightVersion',true,@islogical);
@@ -71,7 +81,9 @@ list_of_sessions = p.Results.list_of_sessions;
 list_of_paths = p.Results.list_of_paths;
 index_path = p.Results.index_path;
 analysis_project_path = p.Results.analysis_project_path;
+results = p.Results.results;
 add_results = p.Results.add_results;
+keepSessionResults = p.Results.keepSessionResults;
 includeSpikes = p.Results.includeSpikes;
 includeLFP = p.Results.includeLFP;
 lightVersion = p.Results.lightVersion;
@@ -124,11 +136,11 @@ end
 % 'placeFields',               ...
 % 'behavior.cellinfo',         ...
 % 'ACGPeak',                   ...
-% 'averageCCG',                ...
 % }
 %
 % Some results previusly used in addition:
 % {...
+% 'averageCCG',                ... (60-100 MB per session: load only if needed)
 % 'speedCorr',                 ...
 % 'uLEDResponse.cellinfo',     ...
 % 'spikeCCGchange',            ...
@@ -152,8 +164,14 @@ if loadLast
 end
 
 %% List of results
-list_of_results = {'optogeneticResponse','ripples_psth','slowOscillations_psth','theta_*.PhaseLockingData','lgamma*.PhaseLockingData','hgamma*.PhaseLockingData','ripple*.PhaseLockingData',...
-            'spatialModulation','placeFields','behavior.cellinfo','ACGPeak','averageCCG'};
+if isempty(results)
+    list_of_results = {'optogeneticResponse','ripples_psth','slowOscillations_psth','theta_*.PhaseLockingData','lgamma*.PhaseLockingData','hgamma*.PhaseLockingData','ripple*.PhaseLockingData',...
+            'spatialModulation','placeFields','behavior.cellinfo','ACGPeak'};
+elseif ischar(results)
+    list_of_results = {results};
+else
+    list_of_results = results(:)';
+end
 if ischar(add_results)
     add_results = {add_results};
 end
@@ -216,15 +234,15 @@ end
 fprintf('Loading %i sessions... \n', length(sessions_basepaths));
 
 %% load cellexplorer results
-cell_metrics = loadCellMetricsBatch('basepaths', sessions_basepaths);
+cell_metrics = loadBatch('basepaths', sessions_basepaths);
 if openCellExplorer
     disp('Close CellExplorer to continue...');
     cell_metrics = CellExplorer('metrics', cell_metrics);
 end
 
 if before_after
-    cell_metrics_before = loadCellMetricsBatch('basepaths', sessions_basepaths, 'saveAs', 'cell_metrics_before');
-    cell_metrics_after = loadCellMetricsBatch('basepaths', sessions_basepaths, 'saveAs', 'cell_metrics_after');
+    cell_metrics_before = loadBatch('basepaths', sessions_basepaths, 'saveAs', 'cell_metrics_before');
+    cell_metrics_after = loadBatch('basepaths', sessions_basepaths, 'saveAs', 'cell_metrics_after');
     if openCellExplorer
         disp('Close CellExplorer to continue (before)...');
         cell_metrics_before = CellExplorer('metrics', cell_metrics_before);
@@ -245,17 +263,30 @@ if lightVersion
     includeLFP = false;
 end
 
+nSessions = length(sessions_basepaths);
+resultsFound = false(nSessions, length(list_of_results));
+multipleFiles = {};
 projectSessionResults = [];
-for ii = 1:length(sessions_basepaths)
-    fprintf(' > %3.i/%3.i sessions \n', ii, length(sessions_basepaths));
+for ii = 1:nSessions
+    fprintf(' > %3.i/%3.i sessions \n', ii, nSessions);
     cd(sessions_basepaths{ii});
 
     % get some useful fields
     spikes = loadSpikes;
     projectSessionResults.numcells(ii) = spikes.numcells;
 
+    % per-cell fields are built from spikes.numcells: it must match cell_metrics
+    nCellMetrics = sum(cell_metrics.batchIDs == ii);
+    if nCellMetrics ~= spikes.numcells
+        error(['%s: %d cells in spikes but %d in cell_metrics. Results would be misaligned.\n' ...
+            'Re-run ProcessCellMetrics for this session (or check its spikes.cellinfo.mat).'], ...
+            sessions_basepaths{ii}, spikes.numcells, nCellMetrics);
+    end
+
     session = loadSession;
-    projectSessionResults.cell_metrics{ii} = loadCellMetrics;
+    if keepSessionResults
+        projectSessionResults.cell_metrics{ii} = loadCellMetrics;
+    end
     projectSessionResults.session{ii} = session;
     projectSessionResults.sessionName{ii} = session.general.name;
     projectSessionResults.geneticLine{ii} = session.animal.geneticLine;
@@ -276,9 +307,13 @@ for ii = 1:length(sessions_basepaths)
         targetFile = dir(['*.' list_of_results{jj} '*.mat']);
         if isempty(targetFile)
             projectSessionResults.(result_fields{jj}){ii} = NaN;
-            warning(['Not possible to load: ', result_fields{jj}]);
         else
+            if length(targetFile) > 1
+                multipleFiles{end+1} = sprintf('%s: %s matches %s (loaded %s)', projectSessionResults.sessionName{ii}, ...
+                    list_of_results{jj}, strjoin({targetFile.name}, ', '), targetFile(1).name);
+            end
             projectSessionResults.(result_fields{jj}){ii} = importdata(targetFile(1).name);
+            resultsFound(ii,jj) = true;
         end
     end
 
@@ -313,15 +348,36 @@ for ii = 1:length(sessions_basepaths)
 end
 cd(startFolder);
 
+%% summary of results not found / ambiguous
+for jj = 1:length(list_of_results)
+    nMissing = sum(~resultsFound(:,jj));
+    if nMissing == nSessions
+        fprintf('  %-26s not found in any session\n', result_fields{jj});
+    elseif nMissing > 0
+        fprintf('  %-26s missing in %d/%d sessions: %s\n', result_fields{jj}, nMissing, nSessions, ...
+            strjoin(projectSessionResults.sessionName(~resultsFound(:,jj)), ', '));
+    end
+end
+if ~isempty(multipleFiles)
+    warning('Several files match the same result (the first one was loaded):\n  %s', strjoin(multipleFiles, '\n  '));
+end
+
 %% stack all results
 projectResults = struct();
 for ii = 1:length(result_fields)
-    try
-        projectResults.(result_fields{ii}) = stackSessionResult(projectSessionResults.(result_fields{ii}), projectSessionResults.numcells);
-    catch
-        warning([result_fields{ii} ' was not stacked!']);
+    if any(resultsFound(:,ii))
+        try
+            projectResults.(result_fields{ii}) = stackSessionResult(projectSessionResults.(result_fields{ii}), projectSessionResults.numcells);
+        catch ME
+            warning('%s was not stacked: %s', result_fields{ii}, ME.message);
+        end
+    end
+    if ~keepSessionResults
+        projectSessionResults = rmfield(projectSessionResults, result_fields{ii});
     end
 end
+projectResults.resultsFound = array2table(resultsFound, 'VariableNames', result_fields, ...
+    'RowNames', matlab.lang.makeUniqueStrings(projectSessionResults.sessionName));
 
 projectResults.cell_metrics = cell_metrics;
 if before_after
@@ -368,6 +424,16 @@ end
 end
 
 %% ------------------------------------------------------------------------
+function cell_metrics = loadBatch(varargin)
+% loadCellMetricsBatch with its waitbar's TeX interpreter off, so session
+% names like cancer2_250707_sess6 are not shown with subscripts.
+% (loadCellMetricsBatch does not close a waitbar it did not create.)
+h = waitbar(0, ' ', 'Name', 'Cell-metrics: loading batch');
+set(findall(h, 'Type', 'text'), 'Interpreter', 'none');
+closeBar = onCleanup(@() delete(h(ishandle(h))));
+cell_metrics = loadCellMetricsBatch(varargin{:}, 'waitbar_handle', h);
+end
+
 function list = toList(x)
 % char ('a b, c'), string or cell -> row cell of non-empty char
 if isempty(x)
