@@ -35,6 +35,8 @@ function [projectResults, projectSessionResults] =  loadProjectResults(varargin)
 % OUTPUTS
 %   projectResults        Results stacked across sessions, one row per cell,
 %                         plus session/geneticLine/expSubject per cell,
+%                         cellType/cellSubtype per cell (cellTypeClassifier,
+%                         '' if the session was not classified),
 %                         sessionsTable (index rows of the loaded sessions)
 %                         and resultsFound (sessions x results, true if found)
 %   projectSessionResults Results per session (cells of length nSessions)
@@ -286,7 +288,25 @@ for ii = 1:nSessions
     session = loadSession;
     if keepSessionResults
         projectSessionResults.cell_metrics{ii} = loadCellMetrics;
+        cm = projectSessionResults.cell_metrics{ii};
+    else
+        cm = loadCellMetrics;
     end
+    % cell type classification (cellTypeClassifier). Read per session:
+    % loadCellMetricsBatch keeps only one value per session of these fields.
+    if isfield(cm, 'ground_truth_classification') && numel(cm.ground_truth_classification.cell_types) ~= spikes.numcells
+        warning('%s: cell type classification has %d cells but spikes %d. Ignored (re-run cellTypeClassifier).', ...
+            session.general.name, numel(cm.ground_truth_classification.cell_types), spikes.numcells);
+        cm = rmfield(cm, 'ground_truth_classification');
+    end
+    if isfield(cm, 'ground_truth_classification')
+        projectSessionResults.cellType{ii} = cm.ground_truth_classification.cell_types(:)';
+        projectSessionResults.cellSubtype{ii} = cm.ground_truth_classification.cell_subtypes(:)';
+    else
+        projectSessionResults.cellType{ii} = repmat({''}, 1, spikes.numcells);
+        projectSessionResults.cellSubtype{ii} = repmat({''}, 1, spikes.numcells);
+    end
+    clear cm
     projectSessionResults.session{ii} = session;
     projectSessionResults.sessionName{ii} = session.general.name;
     projectSessionResults.geneticLine{ii} = session.animal.geneticLine;
@@ -379,6 +399,10 @@ end
 projectResults.resultsFound = array2table(resultsFound, 'VariableNames', result_fields, ...
     'RowNames', matlab.lang.makeUniqueStrings(projectSessionResults.sessionName));
 
+% one value per session after loadCellMetricsBatch: use projectResults.cellType instead
+if isfield(cell_metrics, 'ground_truth_classification')
+    cell_metrics = rmfield(cell_metrics, 'ground_truth_classification');
+end
 projectResults.cell_metrics = cell_metrics;
 if before_after
     projectResults.cell_metrics_before = cell_metrics_before;
@@ -400,6 +424,18 @@ for ii = 1:length(projectSessionResults.numcells)
     projectResults.geneticLine(idx) = {lower(projectSessionResults.geneticLine{ii})};
     projectResults.expSubject(idx) = {lower(projectSessionResults.expSubject{ii})};
     counCell = counCell + projectSessionResults.numcells(ii);
+end
+
+% cell type per cell ('' if the session was not classified)
+projectResults.cellType = [projectSessionResults.cellType{:}];
+projectResults.cellSubtype = [projectSessionResults.cellSubtype{:}];
+notClassified = cellfun(@(x) all(cellfun(@isempty, x)), projectSessionResults.cellType);
+if any(notClassified)
+    warning('No cell type classification (run cellTypeClassifier) in: %s', ...
+        strjoin(projectSessionResults.sessionName(notClassified), ', '));
+end
+if ~keepSessionResults
+    projectSessionResults = rmfield(projectSessionResults, {'cellType','cellSubtype'});
 end
 
 projectResults.sessionList = unique(projectResults.session);

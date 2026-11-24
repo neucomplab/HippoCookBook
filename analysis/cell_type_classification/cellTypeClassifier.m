@@ -52,7 +52,7 @@ if isfield(cell_metrics,'ground_truth_classification') && force == false
 end
 
 modelType = lower(modelType);
-directory = what('HippoCookBook\analysis\cell_type_classification');
+directory.path = fileparts(mfilename('fullpath')); % model files live next to this function
 
 switch modelType
     case lower('hippocampus5')
