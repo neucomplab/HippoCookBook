@@ -92,9 +92,9 @@ for ii = 1:n
             environment = char(getOr(ep, 'environment', ''));
             if contains(paradigm, 'Maze')
                 behav{end+1} = lower(environment);
-                if strcmpi(paradigm, 'Maze') && strcmpi(environment, 'Maze')
+                if strcmpi(environment, 'Maze') && startsWith(lower(paradigm), 'maze')
                     problems{end+1} = sprintf('%s: epoch %d environment is just "Maze"', folderName, jj);
-                elseif ~strcmpi(paradigm, 'Maze')
+                elseif ~startsWith(lower(paradigm), 'maze') % 'Maze', 'Maze1'... are fine; 'TMaze' is not
                     problems{end+1} = sprintf('%s: epoch %d paradigm "%s" / environment "%s" (swapped?)', ...
                         folderName, jj, paradigm, environment);
                 end
