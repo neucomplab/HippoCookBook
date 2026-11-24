@@ -1,182 +1,164 @@
-function [] = indexNewSession(varargin)
-% 
-%       [] = indexSession_InterneuronsLibrary(varargin)
-% Index current session in the csv file in the HippoCookBook path...
+function entry = indexNewSession(varargin)
+% entry = indexNewSession(varargin)
+%   Index a session in the lab session database: one JSON file per session
+%   in a shared folder on the NAS (default: <neural>/indexedSessions/).
+%   Re-indexing a session overwrites its file (no duplicates possible).
 %
-%% MV 2022
+% INPUTS (name-value)
+%   basepath              Session folder (default: pwd)
+%   project               Project(s) of the session, char ('ReactInh
+%                         Bibliocampus') or cell. Default: session.general.projects
+%   index_path            Folder with the per-session JSON files
+%                         (default: nas_path('neural')/indexedSessions)
+%   nas_list              NAS names used to locate the session (default: {'neural','neural3'})
+%   removeDatFiles        Remove _original/_temp .dat, amplifier*.dat in
+%                         subfolders and Kilosort .phy (default: false)
+%   copyFiles             Copy session to driveStorage_location and remove
+%                         the local folder (default: false)
+%   driveStorage_location NAS where to copy the session if copyFiles (default: 'neural')
+%
+% OUTPUT
+%   entry                 Struct written to <index_path>/<sessionName>.json
+%
+% Fields: SessionName, Subject, Path (relative to the NAS root), Location
+% (NAS name), Strain, GeneticLine, Optogenetics {list}, Behavior {list},
+% numCells, brainRegions {list}, Project {list}, indexedDate, updatedDate,
+% indexedBy.
+%
+% MV 2022, 2026: one JSON per session on the NAS (no CSV, no git)
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-% Defaults and Params
+%% Defaults and Params
 p = inputParser;
-
-addParameter(p,'basepath',pwd,@isdir);
-addParameter(p,'project',[],@ischar);
-addParameter(p,'indexedSessionCSV_path',[],@isstring);
-addParameter(p,'indexedSessionCSV_name','indexedSessions',@isstring);
-addParameter(p,'hippoCookBook_path','HippoCookBook',@isstring);
+p.KeepUnmatched = true; % old calls may still pass CSV/git parameters
+addParameter(p,'basepath',pwd,@isfolder);
+addParameter(p,'project',[],@(x) isempty(x) || ischar(x) || isstring(x) || iscell(x));
+addParameter(p,'index_path',[],@(x) isempty(x) || ischar(x) || isstring(x));
+addParameter(p,'nas_list',{'neural','neural3'},@iscell);
 addParameter(p,'removeDatFiles',false,@islogical);
-% addParameter(p,'removeDat',false,@islogical);
 addParameter(p,'copyFiles',false,@islogical);
-% addParameter(p,'driveStorage_path','W:\Buzsakilabspace\Datasets\ValeroM',@isdir);
-addParameter(p,'driveStorage_path',[],@isdir);
-% addParameter(p,'driveStorage_name','Research',@isstring);
-addParameter(p,'driveStorage_location','neural',@isstring);
-addParameter(p,'git_automatic',false);
+addParameter(p,'driveStorage_location','neural',@(x) ischar(x) || isstring(x));
 
-parse(p,varargin{:})
+parse(p,varargin{:});
 
-basepath = p.Results.basepath;
+basepath = char(p.Results.basepath);
 project = p.Results.project;
-indexedSessionCSV_path = p.Results.indexedSessionCSV_path;
-indexedSessionCSV_name = p.Results.indexedSessionCSV_name;
-hippoCookBook_path = p.Results.hippoCookBook_path;
+index_path = char(p.Results.index_path);
+nas_list = p.Results.nas_list;
 removeDatFiles = p.Results.removeDatFiles;
-% removeDat = p.Results.removeDat;
 copyFiles = p.Results.copyFiles;
-driveStorage_path = p.Results.driveStorage_path;
-% driveStorage_name = p.Results.driveStorage_name;
-driveStorage_location = p.Results.driveStorage_location;
-git_automatic = p.Results.git_automatic;
+driveStorage_location = lower(char(p.Results.driveStorage_location));
 
-%% Creates a pointer to the folder where the index variable is located
-if isempty(indexedSessionCSV_name)
-    error('Need to provide the name of the index Project variable');
+obsolete = fieldnames(p.Unmatched);
+if ~isempty(obsolete)
+    warning('indexNewSession: ignoring obsolete parameter(s): %s (the CSV/git index is no longer used).', strjoin(obsolete, ', '));
 end
 
-if ~isempty(project)
-    indexedSessionCSV_name = [indexedSessionCSV_name,'_',project];
+if isempty(index_path)
+    index_path = fullfile(nas_path('neural'), 'indexedSessions');
+end
+if ~isfolder(index_path)
+    error('Index folder not found: %s. Check that the NAS is mounted (nas_path) or pass ''index_path''.', index_path);
 end
 
-if isempty(indexedSessionCSV_path)
-    warning('Not included the path where the indexed Projects .csv variable is located. Trying to find it...');
-    indexedSessionCSV_path = fileparts(which([indexedSessionCSV_name,'.csv']));
-    if isempty(indexedSessionCSV_path)
-        disp('No indexed Projects .csv file found. Lets create one !' );
-        directory = what(hippoCookBook_path);
-        cd(directory.path);
-        allSessions = [];
-        save([indexedSessionCSV_name,'.csv'],'allSessions');
-        indexedSessionCSV_path = fileparts(which([indexedSessionCSV_name,'.csv']));
-        warning('There is a bug in the creation of the file. Go to the path, open the csv file created and delete everything. Then press any key and go on with the function :)');
-        pause
-    end
+%% Session metadata
+basepath = regexprep(basepath, '[\\/]+$', ''); % remove trailing separators
+if ~copyFiles && isempty(findNasLocation(basepath, nas_list))
+    error(['Session is not on any NAS (%s): %s\n' ...
+        'Move it to a NAS or use ''copyFiles'', true.'], strjoin(nas_list, ', '), basepath);
 end
-
-cd(basepath)
-
-%% By default looks for Synology and copy files to it, it specified copy files to the specified folder
-if ~isempty(driveStorage_location) && ~isempty(driveStorage_path)
-    if ~strcmpi(nas_path(driveStorage_location), driveStorage_path) 
-        error('Defined path as driveStorage_location and driveStorage_path do not match!');
-    end
-elseif ~isempty(driveStorage_location) && isempty(driveStorage_path)
-    driveStorage_path = nas_path(driveStorage_location);
-elseif isempty(driveStorage_location) && ~isempty(driveStorage_path)
-    warning('driveStorage_location name missing...');
-end
-% if isempty(driveStorage_path)
-%     % Let's find the packrat synology 
-%     F = getdrives();
-%     for i = 1:length(F)
-%         if strcmpi(driveName(cell2mat(strsplit(F{i},[':',filesep]))),driveStorage_name)
-%             driveStorage_path = [F{i},'data'];
-%             cd(driveStorage_path);
-%         end
-%     end
-% end
-% cd(basepath)
-
-% Indexing
 session = loadSession(basepath);
-generalPath = [session.animal.name,'\',session.general.name];
-sessionName = session.general.name;
+sessionName = lower(session.general.name);
+subject = session.animal.name;
+
+% Where will the session live? Checked BEFORE removing or moving anything
+if copyFiles
+    storage_root = nas_path(driveStorage_location);
+    if isempty(storage_root)
+        error('Unknown driveStorage_location: %s', driveStorage_location);
+    end
+    final_basepath = fullfile(storage_root, subject, session.general.name);
+    location = driveStorage_location;
+    relPath = [subject '/' session.general.name];
+else
+    final_basepath = basepath;
+    [location, relPath] = findNasLocation(basepath, nas_list);
+    if isempty(location)
+        error(['Session is not on any NAS (%s): %s\n' ...
+            'Move it to a NAS or use ''copyFiles'', true.'], strjoin(nas_list, ', '), basepath);
+    end
+end
+
+% Project
 if isempty(project)
     project = session.general.projects;
 end
-% updated indexedSession table
+projectList = toList(project);
 
-sessionsTable = readtable([indexedSessionCSV_path filesep indexedSessionCSV_name,'.csv'],'PreserveVariableNames',true); % the variable is called allSessions
-
-% new table entry
-optogenetics = cell(0);
-switch session.extracellular.chanCoords.layout
-    case 'uLED-12LED-32Ch-4Shanks'
-        optogenetics = {session.extracellular.chanCoords.layout};
-    case 'DiagnosticBiochip-128-6-128ch&uLED_12LED-32Ch-4Shanks'
-        optogenetics = {session.extracellular.chanCoords.layout};
-    case 'BehnkeFried-8ch.csv'
-        optogenetics = {'None'};
-    case 'A8x8-Edge-5mm-50-150-177'
-        optogenetics = {'None'};
+% Optogenetics
+optogenetics = {};
+layout = '';
+if isfield(session,'extracellular') && isfield(session.extracellular,'chanCoords') && isfield(session.extracellular.chanCoords,'layout')
+    layout = session.extracellular.chanCoords.layout;
+end
+switch layout
+    case {'uLED-12LED-32Ch-4Shanks', 'DiagnosticBiochip-128-6-128ch&uLED_12LED-32Ch-4Shanks'}
+        optogenetics = {layout};
+    case {'BehnkeFried-8ch.csv', 'A8x8-Edge-5mm-50-150-177'}
+        optogenetics = {};
     otherwise
-        try
+        if isfield(session.animal,'opticFiberImplants')
             for ii = 1:length(session.animal.opticFiberImplants)
-                optogenetics{1, length(optogenetics)+1} = session.animal.opticFiberImplants{ii}.opticFiber;
-                optogenetics{1, length(optogenetics)+1} = ' ';
-            end 
-            optogenetics(end) = [];
-        catch
-            optogenetics = {'None'};
+                if isfield(session.animal.opticFiberImplants{ii},'opticFiber')
+                    optogenetics{end+1} = lower(session.animal.opticFiberImplants{ii}.opticFiber);
+                end
+            end
         end
 end
 
-behav = cell(0); 
-for i = 1:length(session.epochs)
-    if contains(session.epochs{i}.behavioralParadigm, 'Maze')
-        behav{1, length(behav)+1} = lower(session.epochs{i}.environment);
-        behav{1, length(behav)+1} = ' ';
+% Behavior (environments of the maze epochs)
+behavior = {};
+if isfield(session,'epochs')
+    for ii = 1:length(session.epochs)
+        ep = session.epochs{ii};
+        if isfield(ep,'behavioralParadigm') && contains(ep.behavioralParadigm,'Maze') && isfield(ep,'environment')
+            behavior{end+1} = lower(ep.environment);
+        end
     end
 end
+behavior = unique(behavior, 'stable');
 
-if ~isempty(behav)
-    behav(end) = [];
-    behav = unique(behav);
-    if isempty(behav)
-        behav{1,1} = 'no';
-    end
-else
-    behav{1,1} = 'no';
+% Brain regions
+brainRegions = {};
+if isfield(session,'brainRegions') && isstruct(session.brainRegions)
+    brainRegions = fieldnames(session.brainRegions)';
 end
 
-spikes = loadSpikes;
-
-fn = fieldnames(session.brainRegions);
-brainRegions = cell(0);
-for jj = 1:length(fn)
-    brainRegions{1,length(brainRegions)+1} = fn{jj};
-    brainRegions{1,length(brainRegions)+1} = ' ';
-end    
-brainRegions(end) = [];
-
-sessionEntry = {lower(sessionName), lower(session.animal.name), lower(generalPath), lower(driveStorage_location), lower(session.animal.strain),...
-    lower(session.animal.geneticLine), lower([optogenetics{:}]), [behav{:}], spikes.numcells,  [brainRegions{:}], project};
-sessionEntry = cell2table(sessionEntry,"VariableNames",["SessionName", "Subject", "Path", "Location", "Strain", "GeneticLine", "Optogenetics", "Behavior", "numCells", "brainRegions", "Project"]);
-sessionsTable = [sessionsTable; sessionEntry];
-writetable(sessionsTable,[indexedSessionCSV_path filesep indexedSessionCSV_name,'.csv']); % the variable is called allSessions
-
-if git_automatic
-    % Lets do a push for git repository
-    cd(indexedSessionCSV_path);
-    % Git pull 
-    commandToExecute = ['git pull'];
-    system(commandToExecute);
-    % Git add variable to the repository
-    commandToExecute = ['git add ', indexedSessionCSV_name,'.csv']
-    system(commandToExecute);
-    % Git Commit
-    commentToCommit = ['Added Session: ' session.general.name];
-    commandToExecute = ['git commit -m "' commentToCommit '"'];
-    system(commandToExecute);
-    % Git Pull
-    commandToExecute = ['git pull'];
-    system(commandToExecute);
-    % Git Push
-    commandToExecute = ['git push'];
-    system(commandToExecute);
-    
-    cd(basepath);     
+% Number of cells
+cd(basepath);
+try
+    spikes = loadSpikes;
+    numCells = spikes.numcells;
+catch
+    warning('No spikes found for %s. numCells set to 0.', sessionName);
+    numCells = 0;
 end
 
-%% Removing dat files before copying files to buzsakilab or synology
+%% Entry
+entry = struct();
+entry.SessionName  = sessionName;
+entry.Subject      = lower(subject);
+entry.Path         = relPath;  % case preserved (case-sensitive on Mac)
+entry.Location     = location;
+entry.Strain       = lower(session.animal.strain);
+entry.GeneticLine  = lower(session.animal.geneticLine);
+entry.Optogenetics = optogenetics;
+entry.Behavior     = behavior;
+entry.numCells     = numCells;
+entry.brainRegions = brainRegions;
+entry.Project      = projectList;
+
+%% Removing dat files before copying files to storage
 if removeDatFiles
     % Remove _original and _temp .dat
     if ~isempty(dir([session.general.name,'_original.dat']))
@@ -185,12 +167,12 @@ if removeDatFiles
     if ~isempty(dir([session.general.name,'_temp.dat']))
         delete([session.general.name,'_temp.dat']);
     end
-    
+
     % Remove amplifier*.dat in subfolders
     if ~isempty(dir([session.general.name,'.MergePoints.events.mat']))
         file = dir([session.general.name,'.MergePoints.events.mat']);
         load(file.name)
-        
+
         for i = 1:length(MergePoints.foldernames)
             try
                 cd(MergePoints.foldernames{i})
@@ -204,7 +186,7 @@ if removeDatFiles
             end
         end
     end
-    
+
     % Remove kilosort .phy
     if ~isempty(dir('Kilosort*'))
         file = dir('Kilosort*');
@@ -220,27 +202,89 @@ if removeDatFiles
     end
 end
 
-% if removeDat
-%     if ~isempty(dir([session.general.name,'.dat']))
-%         file = dir([session.general.name,'.dat']);
-%         delete(file.name);
-%     end
-% end
-
-% copying files to storage
+%% Copying files to storage
 if copyFiles
-    if ~exist([driveStorage_path,'\',session.animal.name],'dir')
-        mkdir([driveStorage_path,'\',session.animal.name]);
+    if ~exist(fileparts(final_basepath),'dir')
+        mkdir(fileparts(final_basepath));
     end
-    [success] = copyfile(session.general.basePath,[driveStorage_path,'\',session.animal.name,'\',session.general.name]);
-    if success
-        cd ..
-        try 
-            rmdir(session.general.basePath,'s');
-        catch
-            warning('The session folder could not be removed!');
-        end
+    success = copyfile(basepath, final_basepath);
+    if ~success
+        error('Copy to %s failed. Session NOT indexed.', final_basepath);
+    end
+    cd(final_basepath);
+    try
+        rmdir(basepath,'s');
+    catch
+        warning('The local session folder could not be removed!');
     end
 end
 
+%% Write index file (only once the session is in its final place)
+target = fullfile(index_path, [sessionName '.json']);
+now_str = char(datetime('now','Format','yyyy-MM-dd HH:mm:ss'));
+entry.indexedDate = now_str;
+if isfile(target)
+    try
+        old = jsondecode(fileread(target));
+        if isfield(old,'indexedDate')
+            entry.indexedDate = old.indexedDate;
+        end
+    catch
+    end
+    action = 'Updated';
+else
+    action = 'Indexed';
+end
+entry.updatedDate = now_str;
+entry.indexedBy = char(getenv('USERNAME'));
+if isempty(entry.indexedBy)
+    entry.indexedBy = char(getenv('USER'));
+end
+
+% write to a temporary file and rename, so a crash never leaves a half file
+tmp = [target '.tmp'];
+fid = fopen(tmp, 'w', 'n', 'UTF-8');
+if fid < 0
+    error('Could not write %s', tmp);
+end
+fprintf(fid, '%s', jsonencode(entry, 'PrettyPrint', true));
+fclose(fid);
+movefile(tmp, target, 'f');
+
+fprintf('%s %s (%s: %s)\n', action, sessionName, location, relPath);
+
+end
+
+%% ------------------------------------------------------------------------
+function [location, relPath] = findNasLocation(basepath, nas_list)
+% Which NAS contains basepath, and the path relative to its root
+location = '';
+relPath = '';
+for ii = 1:length(nas_list)
+    root = nas_path(nas_list{ii});
+    if isempty(root)
+        continue
+    end
+    root = regexprep(root, '[\\/]+$', '');
+    n = length(root);
+    % root must be followed by a separator ('/Volumes/NEURAL' ~= '/Volumes/NEURAL3')
+    if length(basepath) > n + 1 && strcmpi(basepath(1:n), root) && any(basepath(n+1) == '\/')
+        location = lower(nas_list{ii});
+        relPath = strrep(basepath(n+2:end), '\', '/');
+        return
+    end
+end
+end
+
+function list = toList(x)
+% char ('a b, c'), string or cell -> row cell of non-empty char
+if isempty(x)
+    list = {};
+    return
+end
+if iscell(x)
+    x = strjoin(cellfun(@char, x, 'UniformOutput', false), ' ');
+end
+list = strsplit(strtrim(char(x)), {' ', ',', ';'});
+list = list(~cellfun(@isempty, list));
 end

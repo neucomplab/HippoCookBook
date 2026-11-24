@@ -1,51 +1,114 @@
 function [projectResults, projectSessionResults] =  loadProjectResults(varargin)
 % [projectResults, projectSessionResults] =  loadProjectResults(varargin)
-%   Load and stack all results for a given project
+%   Load and stack all results for a group of indexed sessions.
+%   Sessions are selected from the lab index (getIndexedSessions) by
+%   project, behavior, brain regions and/or session names.
 %
-% MV 2022, 2025
+% INPUTS (name-value)
+%   project               Project(s), char or cell. A session is selected if
+%                         it belongs to ANY of them. 'All' = no filter.
+%   behavior              Behavior(s), char or cell (e.g. 'tmaze'). ANY of them.
+%   brainRegions          Region(s), char or cell. Matches the beginning of
+%                         the region name: 'CA1' selects CA1sp, CA1so...
+%   list_of_sessions      Cell with session names, or 'all'. Keeps this order.
+%   list_of_paths         Cell with session folders. Skips the index entirely.
+%   index_path            Folder of the session index (default: getIndexedSessions default)
+%   analysis_project_path Folder for the .mat and the summaries (default: pwd)
+%   add_results           Cell with extra result names to load (see list below)
+%   includeSpikes         Keep spikes per session (default: true)
+%   includeLFP            Keep LFP per session (default: false, ignored if lightVersion)
+%   lightVersion          Remove spike times and rasters (default: true)
+%   before_after          Also load cell_metrics_before/after (default: false)
+%   openCellExplorer      Open CellExplorer on the batch, close it to go on (default: true)
+%   loadLast              Load the last saved .mat of this project instead (default: false)
+%   saveMat               Save results in analysis_project_path (default: true)
+%   saveSummaries         Copy SummaryFigures/Summary*.png (default: true)
+%   save_as               Name of the .mat (default: yyyy-mm-dd_<project>)
 %
-% TO DO: Improve multiple projects managment
+% OUTPUTS
+%   projectResults        Results stacked across sessions, one row per cell,
+%                         plus session/geneticLine/expSubject per cell and
+%                         sessionsTable (index rows of the loaded sessions)
+%   projectSessionResults Results per session (cells of length nSessions)
+%
+% EXAMPLES
+%   [pr, psr] = loadProjectResults('project','Crabcer','behavior','tmaze',...
+%       'analysis_project_path','Y:\Analysis\Crabcer');
+%   [pr, psr] = loadProjectResults('list_of_sessions',{'cancer2_250702_sess1','cancer2_250703_sess2'},...
+%       'saveMat',false,'saveSummaries',false);
+%
+% MV 2022, 2025, 2026 (session index from getIndexedSessions)
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 %% Defaults and Parms
+isText = @(x) isempty(x) || ischar(x) || isstring(x) || iscell(x);
 p = inputParser;
-addParameter(p,'project','Undefined',@ischar);
-addParameter(p,'behavior','Undefined',@ischar);
-addParameter(p,'brainRegions','Undefined',@ischar);
-addParameter(p,'indexedSessionCSV_path',[]);
-addParameter(p,'indexedSessionCSV_name','indexedSessions');
-addParameter(p,'includeSpikes',true,@isstring);
-addParameter(p,'includeLFP',false,@isstring);
-addParameter(p,'analysis_project_path',[],@isfolder);
+p.KeepUnmatched = true; % old calls may pass indexedSessionCSV_path/name
+addParameter(p,'project','Undefined',isText);
+addParameter(p,'behavior',[],isText);
+addParameter(p,'brainRegions',[],isText);
+addParameter(p,'list_of_sessions',[],isText);
+addParameter(p,'list_of_paths',[],@(x) isempty(x) || iscell(x));
+addParameter(p,'index_path',[],@(x) isempty(x) || ischar(x) || isstring(x));
+addParameter(p,'analysis_project_path',[],@(x) isempty(x) || isfolder(x));
+addParameter(p,'add_results',[],@(x) isempty(x) || iscell(x) || ischar(x));
+addParameter(p,'includeSpikes',true,@islogical);
+addParameter(p,'includeLFP',false,@islogical);
+addParameter(p,'lightVersion',true,@islogical);
+addParameter(p,'before_after',false,@islogical);
+addParameter(p,'openCellExplorer',true,@islogical);
 addParameter(p,'loadLast',false,@islogical);
 addParameter(p,'saveMat',true,@islogical);
 addParameter(p,'saveSummaries',true,@islogical);
-addParameter(p,'lightVersion',true,@islogical);
-addParameter(p,'list_of_sessions',[],@iscell);
-addParameter(p,'before_after',false);
-addParameter(p,'add_results',[]);
-addParameter(p,'list_of_paths',[]); % if list of paths is provide, then it overides the sessions path from the CSV
-addParameter(p,'save_as',[],@ischar);
+addParameter(p,'save_as',[],@(x) isempty(x) || ischar(x));
 
 parse(p,varargin{:});
 
-project = p.Results.project;
-behavior = p.Results.behavior;
-brainRegions = p.Results.brainRegions;
-indexedSessionCSV_path = p.Results.indexedSessionCSV_path;
-indexedSessionCSV_name = p.Results.indexedSessionCSV_name;
+project = toList(p.Results.project);
+behavior = toList(p.Results.behavior);
+brainRegions = toList(p.Results.brainRegions);
+list_of_sessions = p.Results.list_of_sessions;
+list_of_paths = p.Results.list_of_paths;
+index_path = p.Results.index_path;
+analysis_project_path = p.Results.analysis_project_path;
+add_results = p.Results.add_results;
 includeSpikes = p.Results.includeSpikes;
 includeLFP = p.Results.includeLFP;
-analysis_project_path = p.Results.analysis_project_path;
+lightVersion = p.Results.lightVersion;
+before_after = p.Results.before_after;
+openCellExplorer = p.Results.openCellExplorer;
 loadLast = p.Results.loadLast;
 saveMat = p.Results.saveMat;
 saveSummaries = p.Results.saveSummaries;
-lightVersion = p.Results.lightVersion;
-list_of_sessions = p.Results.list_of_sessions;
 save_as = p.Results.save_as;
-add_results = p.Results.add_results;
-list_of_paths = p.Results.list_of_paths;
-before_after = p.Results.before_after;
+
+obsolete = fieldnames(p.Unmatched);
+if ~isempty(obsolete)
+    warning('loadProjectResults: ignoring obsolete parameter(s): %s (sessions now come from getIndexedSessions).', strjoin(obsolete, ', '));
+end
+
+if any(strcmpi(project, {'Undefined','All'}))
+    project = {};
+end
+projectName = strjoin(project, '_');
+if isempty(projectName)
+    projectName = 'sessions';
+end
+
+if isempty(analysis_project_path)
+    analysis_project_path = pwd;
+    if saveMat || saveSummaries || loadLast
+        fprintf('analysis_project_path not provided. Using %s\n', analysis_project_path);
+    end
+end
+
+% go back to the starting folder when done (the loop cd's into each session)
+startFolder = pwd;
+cleanupObj = onCleanup(@() cd(startFolder));
+
+if isempty(save_as)
+    save_as = [char(datetime('now','Format','yyyy-MM-dd')) '_' projectName];
+end
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % By default it loads the following results:
@@ -61,13 +124,11 @@ before_after = p.Results.before_after;
 % 'placeFields',               ...
 % 'behavior.cellinfo',         ...
 % 'ACGPeak',                   ...
+% 'averageCCG',                ...
 % }
-
+%
 % Some results previusly used in addition:
 % {...
-% 'optogeneticResponse',       ...
-% 'ripples_psth',              ...
-% 'slowOscillations_psth',     ...
 % 'speedCorr',                 ...
 % 'uLEDResponse.cellinfo',     ...
 % 'spikeCCGchange',            ...
@@ -77,150 +138,107 @@ before_after = p.Results.before_after;
 % }; % etc
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-% If previous results are found...
-if isempty(save_as)
-    save_as = [datestr(datetime('now'),29) '_' project];
-end
-
+%% Load previous results
 if loadLast
-    projectFiles = dir([analysis_project_path filesep '*' project '.mat']);
-    if ~isempty(dir([analysis_project_path filesep '*' project '.mat']))
-        disp('Loading data...');
-        last_saved_data = projectFiles(end).name;
-        
-        load([projectFiles(end).folder filesep projectFiles(end).name]);
+    projectFiles = dir(fullfile(analysis_project_path, ['*' projectName '.mat']));
+    if ~isempty(projectFiles)
+        [~, last] = max([projectFiles.datenum]);
+        fprintf('Loading %s...\n', projectFiles(last).name);
+        load(fullfile(projectFiles(last).folder, projectFiles(last).name), 'projectResults', 'projectSessionResults');
         return
     else
         warning('Not possible to reload project. Loading data from sessions...');
     end
 end
 
-% List of results
-% default list is
+%% List of results
 list_of_results = {'optogeneticResponse','ripples_psth','slowOscillations_psth','theta_*.PhaseLockingData','lgamma*.PhaseLockingData','hgamma*.PhaseLockingData','ripple*.PhaseLockingData',...
             'spatialModulation','placeFields','behavior.cellinfo','ACGPeak','averageCCG'};
-% adding new results
-list_of_results = unique([list_of_results, add_results], 'stable');
+if ischar(add_results)
+    add_results = {add_results};
+end
+list_of_results = unique([list_of_results, add_results(:)'], 'stable');
+% field names for each result ('theta_*.PhaseLockingData' -> 'theta_PhaseLockingData')
+result_fields = replace(list_of_results, {'.','*'}, '');
+result_fields = replace(result_fields, '-', '_');
 
-%%
-[list_of_sessions, indexedSession_index] = findProjectSeesions('project',project,'Behavior', behavior,'brainRegions', brainRegions);
-
-%% find indexed sessions
-if isempty(list_of_paths)
-    
-    % check sessions to load
-    sessionsTable = readtable([indexedSessionCSV_path filesep indexedSessionCSV_name,'.csv']); % the variable is called allSessions
-    if ischar(list_of_sessions) && strcmpi(list_of_sessions, 'all')
-        list_of_sessions = sessionsTable.SessionName;
-    else
-        sessions_found = find(ismember(sessionsTable.SessionName, list_of_sessions));
-        
-        if length(sessions_found) < length(list_of_sessions)
-            error('Sessions not found: %s', strjoin(setxor(list_of_sessions, sessionsTable.SessionName(sessions_found)), ', '));
-        end
-
-        if numel(sessionsTable.SessionName(sessions_found)) ~= numel(unique(sessionsTable.SessionName(sessions_found)))
-            [uniqueElems, ~, idx] = unique(sessionsTable.SessionName(sessions_found));
-            counts = accumarray(idx, 1);
-            error('Duplicated sessions: %s', strjoin(uniqueElems(counts > 1), ', '));
-        end
-    end
-    
-    sessions_found = find(ismember(sessionsTable.SessionName, list_of_sessions));
-    for ii = 1:length(list_of_sessions)
-        sessions_basepaths{ii} = adapt_filesep([nas_path(sessionsTable.Location{sessions_found(ii)}) filesep sessionsTable.Path{sessions_found(ii)}]);
-    end
-
-    
-    % if isempty(indexedSessionCSV_name)
-    %     error('Need to provide the name of the index Project variable');
-    % end
-    % if isempty(indexedSessionCSV_path)
-    %     warning('Not included the path where the indexed Projects .mat variable is located. Trying to find it...');
-    %     indexedSessionCSV_path = fileparts(which([indexedSessionCSV_name,'.csv']));
-    % end
-    % if isempty(analysis_project_path)
-    %     analysis_project_path = indexedSessionCSV_path;
-    % end
-        
-    sessionsTable = readtable([indexedSessionCSV_path filesep indexedSessionCSV_name,'.csv']); % the variable is called allSessions
-        
-    for ii = 1:length(sessionsTable.SessionName)
-        sessions.basepaths{ii} = [nas_path(sessionsTable.Location{ii}) filesep sessionsTable.Path{ii}];
-    end
-    sessions.project = sessionsTable.Project;
-    
-    disp('Projects found: '); 
-    for ii = 1:length(sessions.project) % remove to spaces together, if any
-        sessions.project{ii} = strrep(sessions.project{ii}, '  ', ' ');
-    end
-    project_list = unique(sessions.project);
-    project_list_temp = cell(0);
-    for jj = 1:length(project_list)
-        project_list_temp{1,length(project_list_temp)+1} = project_list{jj};
-        project_list_temp{1,length(project_list_temp)+1} = ' ';
-    end    
-    project_list_temp(end) = [];
-    project_list = unique(split([project_list_temp{:}],' '));
-    
-    for ii = 1:length(project_list)
-        fprintf(' %3.i/ %s \n',ii,project_list{ii}); %\n
-    end
-    % fprintf('Taking all sessions from project "%s" \n',project)
-    
-    % selecting sessions
-    if isempty(list_of_sessions)
-        list_of_sessions = sessionsTable.SessionName;
-    end
-    
-    % if ~isempty(reject_sessions)
-    %     list_of_sessions{find(contains(list_of_sessions,lower(reject_sessions)))} = ' ';
-    % end
-    % 
-        
-    if strcmpi(project,'Undefined') || strcmpi(project,'All')
-        project = project_list;
-    elseif ~any(ismember(project_list, project))
-        error('Project name not recognized!');
-    end
-    
-    sessions.basepaths = sessions.basepaths(contains(lower(sessions.project), lower(project)) & contains(lower(sessionsTable.SessionName), lower(list_of_sessions)));
-    sessions.project = sessions.project(contains(lower(sessions.project), lower(project)) & contains(lower(sessionsTable.SessionName), lower(list_of_sessions)));
-
+%% Select sessions
+if ~isempty(list_of_paths)
+    sessions_basepaths = list_of_paths(:)';
+    sessionsTable = table();
 else
-    sessions.basepaths = list_of_paths;
+    sessionsTable = getIndexedSessions('index_path', index_path);
+    selected = true(height(sessionsTable),1);
+
+    if ~isempty(project)
+        selected = selected & cellfun(@(x) any(ismember(lower(x), lower(project))), sessionsTable.Project);
+    end
+    if ~isempty(behavior)
+        selected = selected & cellfun(@(x) any(ismember(lower(x), lower(behavior))), sessionsTable.Behavior);
+    end
+    if ~isempty(brainRegions)
+        selected = selected & cellfun(@(x) any(startsWith(lower(x), lower(brainRegions))), sessionsTable.brainRegions);
+    end
+
+    loadAll = (ischar(list_of_sessions) || isstring(list_of_sessions)) && strcmpi(list_of_sessions, 'all');
+    if ~isempty(list_of_sessions) && ~loadAll
+        list_of_sessions = lower(toList(list_of_sessions));
+        [found, idx] = ismember(list_of_sessions, lower(sessionsTable.SessionName));
+        if ~all(found)
+            error('Sessions not found in the index: %s', strjoin(list_of_sessions(~found), ', '));
+        end
+        notMatching = idx(~selected(idx));
+        if ~isempty(notMatching)
+            error('Sessions do not match the project/behavior/brainRegions filters: %s', ...
+                strjoin(sessionsTable.SessionName(notMatching), ', '));
+        end
+        order = idx; % keep the order given by the user
+    else
+        if isempty(project) && isempty(behavior) && isempty(brainRegions) && ~loadAll
+            error('No sessions selected. Give project, behavior, brainRegions or list_of_sessions (''all'' loads the whole index).');
+        end
+        order = find(selected);
+    end
+
+    if isempty(order)
+        error('No indexed sessions match project: %s | behavior: %s | brainRegions: %s', ...
+            strjoin(project, ' '), strjoin(behavior, ' '), strjoin(brainRegions, ' '));
+    end
+    sessionsTable = sessionsTable(order,:);
+    sessions_basepaths = sessionsTable.basepath';
 end
 
-fprintf('Loading %3.i sessions... \n',length(sessions.basepaths)); %\n
-
-for ii = 1:length(sessions.basepaths)
-    sessions.basepaths_before{ii} = [sessions.basepaths{ii},'.cell_metrics_before'];
-    sessions.basepaths_after{ii} = [sessions.basepaths{ii},'.cell_metrics_after'];
+missing = ~cellfun(@isfolder, sessions_basepaths);
+if any(missing)
+    error('Session folders not found (is the NAS mounted?): %s', strjoin(sessions_basepaths(missing), ', '));
 end
-files_clean = cellfun(@(f) [fileparts(f)], sessions.basepaths_before, 'UniformOutput', false);
+
+fprintf('Loading %i sessions... \n', length(sessions_basepaths));
 
 %% load cellexplorer results
-cell_metrics = loadCellMetricsBatch('basepaths',sessions.basepaths);
-% disp('Close when done exploring...');
-cell_metrics = CellExplorer('metrics',cell_metrics);% run CELLEXPLORER when adding new data
-close(gcf);
+cell_metrics = loadCellMetricsBatch('basepaths', sessions_basepaths);
+if openCellExplorer
+    disp('Close CellExplorer to continue...');
+    cell_metrics = CellExplorer('metrics', cell_metrics);
+end
 
 if before_after
-    cell_metrics_before = loadCellMetricsBatch('basepaths',sessions.basepaths,'saveAs','cell_metrics_before');
-    % disp('Close when done exploring...');
-    cell_metrics_before = CellExplorer('metrics',cell_metrics_before);% run CELLEXPLORER when adding new data
-    close(gcf);
-    
-    cell_metrics_after = loadCellMetricsBatch('basepaths',sessions.basepaths,'saveAs','cell_metrics_after');
-    % disp('Close when done exploring...');
-    cell_metrics_after = CellExplorer('metrics',cell_metrics_after);% run CELLEXPLORER when adding new data
-    close(gcf);
+    cell_metrics_before = loadCellMetricsBatch('basepaths', sessions_basepaths, 'saveAs', 'cell_metrics_before');
+    cell_metrics_after = loadCellMetricsBatch('basepaths', sessions_basepaths, 'saveAs', 'cell_metrics_after');
+    if openCellExplorer
+        disp('Close CellExplorer to continue (before)...');
+        cell_metrics_before = CellExplorer('metrics', cell_metrics_before);
+        disp('Close CellExplorer to continue (after)...');
+        cell_metrics_after = CellExplorer('metrics', cell_metrics_after);
+    end
 end
 
 %% collect data per session
 if saveSummaries
-    mkdir(analysis_project_path,'Summaries');
-    saveSummariespath = [analysis_project_path filesep 'Summaries' filesep];
+    saveSummariespath = fullfile(analysis_project_path, 'Summaries');
+    if ~exist(saveSummariespath, 'dir')
+        mkdir(saveSummariespath);
+    end
 end
 
 if lightVersion
@@ -228,15 +246,14 @@ if lightVersion
 end
 
 projectSessionResults = [];
-for ii = 1:length(sessions.basepaths)
-    fprintf(' > %3.i/%3.i sessions \n',ii, length(sessions.basepaths)); %\n
-    cd(sessions.basepaths{ii});
-    
+for ii = 1:length(sessions_basepaths)
+    fprintf(' > %3.i/%3.i sessions \n', ii, length(sessions_basepaths));
+    cd(sessions_basepaths{ii});
+
     % get some useful fields
     spikes = loadSpikes;
     projectSessionResults.numcells(ii) = spikes.numcells;
-    
-    % session name!!
+
     session = loadSession;
     projectSessionResults.cell_metrics{ii} = loadCellMetrics;
     projectSessionResults.session{ii} = session;
@@ -248,160 +265,85 @@ for ii = 1:length(sessions.basepaths)
     % spikes
     if includeSpikes
         if lightVersion
-            spikes = rmfield(spikes,'ts');
-            spikes = rmfield(spikes,'ids');
-            spikes = rmfield(spikes,'amplitudes');
+            spikes = rmfield(spikes, intersect({'ts','ids','amplitudes'}, fieldnames(spikes)));
         end
         projectSessionResults.spikes{ii} = spikes;
     end
     clear spikes
-    
+
     % loop results
-    for jj= 1:length(list_of_results)
-        targetFile = dir(['*.' list_of_results{jj} '*.mat']); 
-        % targetjjFile = dir(['*.' list_of_results{jj} '.mat']);
-        name_of_result = replace(list_of_results{jj},{'.','*'},'');
-        name_of_result = replace(name_of_result,{'-'},'_');
-        list_of_results2{jj} = name_of_result;
+    for jj = 1:length(list_of_results)
+        targetFile = dir(['*.' list_of_results{jj} '*.mat']);
         if isempty(targetFile)
-            projectSessionResults.(name_of_result){ii} = NaN;
-            warning(['Not possible to load: ', name_of_result]);
+            projectSessionResults.(result_fields{jj}){ii} = NaN;
+            warning(['Not possible to load: ', result_fields{jj}]);
         else
-            projectSessionResults.(name_of_result){ii} = importdata(targetFile(1).name);
+            projectSessionResults.(result_fields{jj}){ii} = importdata(targetFile(1).name);
         end
-
     end
 
-    % if lightversion and checking fields
-    if isfield(projectSessionResults,'optogeneticResponse') && ~isfield(projectSessionResults.optogeneticResponse{ii},'checkedCells') && isfield(projectSessionResults.optogeneticResponse{ii},'bootsTrapRate')
-         projectSessionResults.optogeneticResponse{ii}.checkedCells = zeros(length(projectSessionResults.optogeneticResponse{ii}.bootsTrapRate(:,1)),1);
+    % old optogeneticResponse files have no checkedCells
+    if isfield(projectSessionResults,'optogeneticResponse') && isstruct(projectSessionResults.optogeneticResponse{ii}) ...
+            && ~isfield(projectSessionResults.optogeneticResponse{ii},'checkedCells') ...
+            && isfield(projectSessionResults.optogeneticResponse{ii},'bootsTrapRate')
+        projectSessionResults.optogeneticResponse{ii}.checkedCells = zeros(size(projectSessionResults.optogeneticResponse{ii}.bootsTrapRate,1),1);
     end
-    
+
     if lightVersion
-        for removeRasterFrom = ['optogeneticResponse', 'ripples_psth', 'slowOscillations_psth']
-            if isfield(projectSessionResults,removeRasterFrom) && isfield(projectSessionResults.(removeRasterFrom){ii},'raster')
-                projectSessionResults.(removeRasterFrom){ii} = rmfield(projectSessionResults.(removeRasterFrom){ii},'raster');
+        for removeRasterFrom = {'optogeneticResponse', 'ripples_psth', 'slowOscillations_psth'}
+            fld = removeRasterFrom{1};
+            if isfield(projectSessionResults, fld) && isstruct(projectSessionResults.(fld){ii}) ...
+                    && isfield(projectSessionResults.(fld){ii}, 'raster')
+                projectSessionResults.(fld){ii} = rmfield(projectSessionResults.(fld){ii}, 'raster');
             end
         end
     end
 
     if includeLFP
-        lfp = getLFP;
-        projectSessionResults.lfp{ii} = lfp;
-        clear lfp
+        projectSessionResults.lfp{ii} = getLFP;
     end
-    
+
     if saveSummaries
-        % findSummaries
-        summaryPngs = dir([sessions.basepaths{ii} filesep 'SummaryFigures' filesep 'Summary*.png']);
+        summaryPngs = dir(fullfile(sessions_basepaths{ii}, 'SummaryFigures', 'Summary*.png'));
         for jj = 1:length(summaryPngs)
-            copyfile([summaryPngs(jj).folder filesep summaryPngs(jj).name],...
-                [saveSummariespath  projectSessionResults.sessionName{ii} '_' summaryPngs(jj).name]);
+            copyfile(fullfile(summaryPngs(jj).folder, summaryPngs(jj).name),...
+                fullfile(saveSummariespath, [projectSessionResults.sessionName{ii} '_' summaryPngs(jj).name]));
         end
     end
-    
 end
+cd(startFolder);
+
 %% stack all results
-for ii = 1:length(list_of_results2)
-    try projectResults.(list_of_results2{ii}) = stackSessionResult(projectSessionResults.(list_of_results2{ii}), projectSessionResults.numcells);
+projectResults = struct();
+for ii = 1:length(result_fields)
+    try
+        projectResults.(result_fields{ii}) = stackSessionResult(projectSessionResults.(result_fields{ii}), projectSessionResults.numcells);
     catch
-         warning([list_of_results2{ii} ' was not staked!']);
+        warning([result_fields{ii} ' was not stacked!']);
     end
 end
 
-% stack results with different samples than neurons (i.e ripple events)
-try
-    projectResults.fiber_psth_ripples = stackSessionResult(projectSessionResults.fiber_psth_ripples,projectSessionResults.num_ripples);
-    projectResults.fiber_psth_ripples_PreSleep2 = stackSessionResult(projectSessionResults.fiber_psth_ripples_PreSleep2,projectSessionResults.num_ripples_pre);
-    projectResults.fiber_psth_ripples_PostSleep2 = stackSessionResult(projectSessionResults.fiber_psth_ripples_PostSleep2,projectSessionResults.num_ripples_post);
-
-
-for ii = 1:length(projectSessionResults.SessionArmChoiceEvents)
-    if isstruct(projectSessionResults.SessionArmChoiceEvents{ii})
-        fld = fields(projectSessionResults.SessionArmChoiceEvents{ii});
-        performance(ii) = projectSessionResults.SessionArmChoiceEvents{ii}.(fld{1}).performance;
-    else
-        performance(ii) = NaN;
-    end 
-end
-projectResults.performance = performance;
-
-catch
-end
-
 projectResults.cell_metrics = cell_metrics;
+if before_after
+    projectResults.cell_metrics_before = cell_metrics_before;
+    projectResults.cell_metrics_after = cell_metrics_after;
+end
+projectResults.sessionsTable = sessionsTable;
 
-% session, genetic line, experimentalSubject
+% session, genetic line, experimentalSubject (one per cell)
+nCells = sum(projectSessionResults.numcells);
+projectResults.session = cell(1, nCells);
+projectResults.sessionNumber = zeros(1, nCells);
+projectResults.geneticLine = cell(1, nCells);
+projectResults.expSubject = cell(1, nCells);
 counCell = 1;
 for ii = 1:length(projectSessionResults.numcells)
-    for jj = 1:projectSessionResults.numcells(ii)
-        % session
-        projectResults.session{counCell} = lower(projectSessionResults.sessionName{ii});
-        projectResults.sessionNumber(counCell) = ii;
-        % geneticLine
-        projectResults.geneticLine{counCell} = lower(projectSessionResults.geneticLine{ii});
-        % expSubject
-        projectResults.expSubject{counCell} = lower(projectSessionResults.expSubject{ii});
-        counCell = counCell + 1;
-
-    end
-end
-
-projectResults.cell_metrics = cell_metrics;
-% projectResults.cell_metrics_before = cell_metrics_before;
-% projectResults.cell_metrics_after = cell_metrics_after;
-
-try
-% session, genetic line, experimentalSubjet (for ripples variables)
-counCell = 1;
-for ii = 1:length(projectSessionResults.num_ripples)
-    for jj = 1:projectSessionResults.num_ripples(ii)
-        % session
-        projectResults.session_ripples{counCell} = lower(projectSessionResults.sessionName{ii});
-        projectResults.sessionNumber_ripples(counCell) = ii;
-        
-        % geneticLine
-        projectResults.geneticLine_ripples{counCell} = lower(projectSessionResults.geneticLine{ii});
-        
-        % expSubject
-         projectResults.expSubject_ripples{counCell} = lower(projectSessionResults.expSubject{ii});
-         counCell = counCell + 1;
-    end
-end
-
-% session, genetic line, experimentalSubjet (for ripples variables)
-counCell = 1;
-for ii = 1:length(projectSessionResults.num_ripples_pre)
-    for jj = 1:projectSessionResults.num_ripples_pre(ii)
-        % session
-        projectResults.session_ripples_pre{counCell} = lower(projectSessionResults.sessionName{ii});
-        projectResults.sessionNumber_ripples_pre(counCell) = ii;
-        
-        % geneticLine
-        projectResults.geneticLine_ripples_pre{counCell} = lower(projectSessionResults.geneticLine{ii});
-        
-        % expSubject
-         projectResults.expSubject_ripples_pre{counCell} = lower(projectSessionResults.expSubject{ii});
-         counCell = counCell + 1;
-    end
-end
-
-% session, genetic line, experimentalSubjet (for ripples variables)
-counCell = 1;
-for ii = 1:length(projectSessionResults.num_ripples_post)
-    for jj = 1:projectSessionResults.num_ripples_post(ii)
-        % session
-        projectResults.session_ripples_post{counCell} = lower(projectSessionResults.sessionName{ii});
-        projectResults.sessionNumber_ripples_post(counCell) = ii;
-        
-        % geneticLine
-        projectResults.geneticLine_ripples_post{counCell} = lower(projectSessionResults.geneticLine{ii});
-        
-        % expSubject
-         projectResults.expSubject_ripples_post{counCell} = lower(projectSessionResults.expSubject{ii});
-         counCell = counCell + 1;
-    end
-end
+    idx = counCell:counCell + projectSessionResults.numcells(ii) - 1;
+    projectResults.session(idx) = {lower(projectSessionResults.sessionName{ii})};
+    projectResults.sessionNumber(idx) = ii;
+    projectResults.geneticLine(idx) = {lower(projectSessionResults.geneticLine{ii})};
+    projectResults.expSubject(idx) = {lower(projectSessionResults.expSubject{ii})};
+    counCell = counCell + projectSessionResults.numcells(ii);
 end
 
 projectResults.sessionList = unique(projectResults.session);
@@ -420,7 +362,21 @@ end
 
 if saveMat
     disp('Saving data');
-    save([analysis_project_path filesep save_as '.mat'],'projectSessionResults','projectResults','-v7.3');
+    save(fullfile(analysis_project_path, [save_as '.mat']), 'projectSessionResults', 'projectResults', '-v7.3');
 end
 
+end
+
+%% ------------------------------------------------------------------------
+function list = toList(x)
+% char ('a b, c'), string or cell -> row cell of non-empty char
+if isempty(x)
+    list = {};
+    return
+end
+if iscell(x)
+    x = strjoin(cellfun(@char, x, 'UniformOutput', false), ' ');
+end
+list = strsplit(strtrim(char(x)), {' ', ',', ';'});
+list = list(~cellfun(@isempty, list));
 end
